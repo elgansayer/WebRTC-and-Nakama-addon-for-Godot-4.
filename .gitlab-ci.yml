@@ -67,8 +67,8 @@ web:
   <<: *export_before_script
   stage: export
   script:
-	# Delete the WebRTC GDNative plugins.
-	- rm -rf webrtc_debug webrtc
+    # Delete the WebRTC GDNative plugins.
+    - rm -rf webrtc_debug webrtc
 
     - mkdir -v -p build/web
     - godot -v --export "HTML5" ./build/web/index.html
