@@ -1,0 +1,277 @@
+extends Node2D
+
+onready var game := $Game
+onready var hud := $HUD
+onready var ui_layer := $UILayer
+onready var ready_screen := $UILayer/ReadyScreen
+
+var nakama_client: NakamaClient
+var nakama_session: NakamaSession
+
+var game_started := false
+
+var players := {}
+var players_ready := {}
+
+func _ready():
+	nakama_client = Nakama.create_client(
+		Build.NAKAMA_SERVER_KEY,
+		Build.NAKAMA_HOST,
+		Build.NAKAMA_PORT,
+		'https' if Build.NAKAMA_USE_SSL else 'http')
+	
+	NakamaWebRTC.connect("error", self, "_on_match_error")
+	NakamaWebRTC.connect("disconnected", self, "_on_match_disconnected")
+	NakamaWebRTC.connect("match_created", self, "_on_match_created")
+	NakamaWebRTC.connect("match_joined", self, "_on_match_joined")
+	NakamaWebRTC.connect("matchmaker_matched", self, "_on_matchmaker_matched")
+	NakamaWebRTC.connect("player_joined", self, "_on_player_joined")
+	NakamaWebRTC.connect("player_left", self, "_on_player_left")
+	NakamaWebRTC.connect("player_status_changed", self, "_on_player_status_changed")
+	NakamaWebRTC.connect("match_ready", self, "_on_match_ready")
+	NakamaWebRTC.connect("match_not_ready", self, "_on_match_not_ready")
+	
+	game.connect("game_started", self, "_on_game_started")
+	game.connect("player_dead", self, "_on_player_dead")
+	game.connect("game_over", self, "_on_game_over")
+
+#func _unhandled_input(event: InputEvent) -> void:
+#	# Trigger debugging action!
+#	if event.is_action_pressed("player_debug"):
+#		# Close all our peers to force a reconnect (to make sure it works).
+#		for session_id in NakamaWebRTC.webrtc_peers:
+#			var webrtc_peer = NakamaWebRTC.webrtc_peers[session_id]
+#			webrtc_peer.close()
+
+func _on_UILayer_change_screen(name, _screen) -> void:
+	if name == 'MatchScreen':
+		if not nakama_session or nakama_session.is_expired():
+			# If we were previously connected, then show a message.
+			if nakama_session:
+				hud.show_message("Login session has expired")
+			ui_layer.show_screen("ConnectionScreen")
+	
+	if name == 'TitleScreen':
+		hud.hide_exit_button()
+	else:
+		hud.show_exit_button()
+
+func _on_TitleScreen_play_online() -> void:
+	GameState.online_play = true
+	ui_layer.show_screen("MatchScreen")
+	
+	# Show the game map in the background because we have nothing better.
+	game.reload_map()
+
+func _on_TitleScreen_play_local() -> void:
+	GameState.online_play = false
+	ui_layer.hide_screen()
+	
+	start_game()
+
+func _on_ConnectionScreen_login(email, password) -> void:
+	ui_layer.hide_screen()
+	hud.show_message("Logging in...")
+	
+	nakama_session = yield(nakama_client.authenticate_email_async(email, password), "completed")
+	
+	if nakama_session.is_exception():
+		hud.show_message("Login failed!")
+		ui_layer.show_screen("ConnectionScreen")
+	else:
+		hud.hide_all()
+		ui_layer.show_screen("MatchScreen")
+
+func _on_ConnectionScreen_create_account(username, email, password) -> void:
+	ui_layer.hide_screen()
+	hud.show_message("Creating account...")
+
+	nakama_session = yield(nakama_client.authenticate_email_async(email, password, username, true), "completed")
+	
+	if nakama_session.is_exception():
+		var msg = nakama_session.get_exception().message
+		# Nakama treats registration as logging in, so this is what we get if the
+		# the email is already is use but the password is wrong.
+		if msg == 'Invalid credentials.':
+			msg = 'E-mail already in use.'
+		elif msg == '':
+			msg = "Unable to create account"
+		hud.show_message(msg)
+		ui_layer.show_screen("ConnectionScreen")
+	else:
+		hud.hide_all()
+		ui_layer.show_screen("MatchScreen")
+
+func _on_MatchScreen_create_match() -> void:
+	if nakama_session.is_expired():
+		hud.show_message("Login session has expired")
+		ui_layer.show_screen("ConnectionScreen")
+	else:
+		NakamaWebRTC.create_match(nakama_client, nakama_session)
+		hud.hide_message()
+
+func _on_MatchScreen_join_match(match_id) -> void:
+	if not match_id:
+		hud.show_message("Need to paste Match ID to join")
+		return
+	
+	if nakama_session.is_expired():
+		hud.show_message("Login session has expired")
+		ui_layer.show_screen("ConnectionScreen")
+	else:
+		NakamaWebRTC.join_match(nakama_client, nakama_session, match_id)
+		hud.hide_message()
+
+func _on_MatchScreen_find_match(min_players: int):
+	if nakama_session.is_expired():
+		hud.show_message("Login session has expired")
+		ui_layer.show_screen("ConnectionScreen")
+	else:
+		ui_layer.hide_screen()
+		hud.show_message("Looking for match...")
+		hud.show_exit_button()
+		
+		var data = {
+			min_count = min_players,
+			string_properties = {
+				game = "test_game",
+			},
+			query = "+properties.game:test_game",
+		}
+		NakamaWebRTC.start_matchmaking(nakama_client, nakama_session, data)
+
+func _on_match_error(message):
+	ui_layer.show_screen("MatchScreen")
+	hud.show_message(message)
+
+func _on_match_disconnected():
+	_on_match_error("Disconnected from server")
+
+func _on_match_created(match_id):
+	ui_layer.show_screen("ReadyScreen", [{}, match_id])
+	hud.show_exit_button()
+
+func _on_match_joined(match_id):
+	ui_layer.show_screen("ReadyScreen", [{}, match_id])
+	hud.show_exit_button()
+
+func _on_matchmaker_matched(_players):
+	hud.hide_all()
+	ui_layer.show_screen("ReadyScreen", [_players])
+	hud.show_exit_button()
+
+func _on_player_joined(player):
+	ready_screen.add_player(player.session_id, player.username)
+
+func _on_player_left(player):
+	hud.show_message(player.username + " has left")
+	
+	ready_screen.remove_player(player.session_id)
+	
+	if game_started:
+		game.kill_player(player.peer_id)
+	
+	players.erase(player.peer_id)
+	players_ready.erase(player.peer_id)
+
+func _on_player_status_changed(player, status):
+	if status == NakamaWebRTC.PlayerStatus.CONNECTED:
+		# Don't go backwards from 'READY!'
+		if ready_screen.get_status(player.session_id) != 'READY!':
+			ready_screen.set_status(player.session_id, 'Connected.')
+		
+		if get_tree().is_network_server():
+			# Tell this new player about all the other players that are already ready.
+			for session_id in players_ready:
+				rpc_id(player.peer_id, "player_ready", session_id)
+	elif status == NakamaWebRTC.PlayerStatus.CONNECTING:
+		ready_screen.set_status(player.session_id, 'Connecting...')
+
+func _on_match_ready(_players):
+	ready_screen.set_ready_button_enabled(true)
+
+func _on_match_not_ready():
+	ready_screen.set_ready_button_enabled(false)
+
+func _on_ReadyScreen_ready_pressed() -> void:
+	rpc("player_ready", NakamaWebRTC.get_my_session_id())
+
+remotesync func player_ready(session_id):
+	ready_screen.set_status(session_id, "READY!")
+	
+	if get_tree().is_network_server() and not players_ready.has(session_id):
+		players_ready[session_id] = true
+		if players_ready.size() == NakamaWebRTC.players.size():
+			if NakamaWebRTC.match_state != NakamaWebRTC.MatchState.PLAYING:
+				NakamaWebRTC.start_playing()
+			start_game()
+
+func _on_HUD_start() -> void:
+	start_game()
+
+func _on_HUD_exit() -> void:
+	stop_game()
+	hud.hide_all()
+	
+	if ui_layer.current_screen_name == 'ConnectionScreen' or ui_layer.current_screen_name == 'MatchScreen':
+		ui_layer.show_screen("TitleScreen")
+	elif not GameState.online_play:
+		ui_layer.show_screen("TitleScreen")
+	else:
+		ui_layer.show_screen("MatchScreen")
+
+func start_game() -> void:
+	if GameState.online_play:
+		players = NakamaWebRTC.get_player_names_by_peer_id()
+	else:
+		players = {
+			1: "Player1",
+			2: "Player2",
+		}
+	
+	game.game_start(players)
+
+func _on_game_started() -> void:
+	game_started = true
+	ui_layer.hide_screen()
+	hud.hide_all()
+	hud.show_exit_button()
+
+func stop_game() -> void:
+	NakamaWebRTC.leave()
+	
+	players = {}
+	players_ready = {}
+	
+	game.game_stop()
+
+func restart_game() -> void:
+	stop_game()
+	start_game()
+
+func _on_player_dead(player_id : int) -> void:
+	if GameState.online_play:
+		var my_id = get_tree().get_network_unique_id()
+		if player_id == my_id:
+			hud.show_message("You lose!")
+
+func _on_game_over(player_id: int) -> void:
+	players_ready.clear()
+	
+	if not GameState.online_play:
+		show_winner(players[player_id])
+	elif get_tree().is_network_server():
+		rpc("show_winner", players[player_id])
+
+remotesync func show_winner(name):
+	hud.show_message(name + " is the winner!")
+	
+	yield(get_tree().create_timer(2.0), "timeout")
+	
+	if GameState.online_play:
+		ready_screen.hide_match_id()
+		ready_screen.reset_status("Waiting...")
+		ui_layer.show_screen("ReadyScreen")
+	else:
+		restart_game()
+
