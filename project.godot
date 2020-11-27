@@ -98,7 +98,7 @@ _global_script_class_icons={
 
 [application]
 
-config/name="Nakama/WebRTC addon example"
+config/name="Nakama and WebRTC demo"
 run/main_scene="res://Main.tscn"
 config/icon="res://icon.png"
 
