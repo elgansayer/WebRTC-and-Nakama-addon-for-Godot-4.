@@ -7,6 +7,7 @@ onready var ready_screen := $UILayer/ReadyScreen
 
 var nakama_client: NakamaClient
 var nakama_session: NakamaSession
+var nakama_socket: NakamaSocket
 
 var game_started := false
 
@@ -47,10 +48,15 @@ func _ready():
 func _on_UILayer_change_screen(name, _screen) -> void:
 	if name == 'MatchScreen':
 		if not nakama_session or nakama_session.is_expired():
+			nakama_socket = null
 			# If we were previously connected, then show a message.
 			if nakama_session:
 				hud.show_message("Login session has expired")
 			ui_layer.show_screen("ConnectionScreen")
+		elif not nakama_socket or not nakama_socket.is_connected_to_host():
+			nakama_socket = Nakama.create_socket_from(nakama_client)
+			yield(nakama_socket.connect_async(nakama_session), "completed")
+			NakamaWebRTC.nakama_socket = nakama_socket
 	
 	if name == 'TitleScreen':
 		hud.hide_exit_button()
@@ -108,7 +114,7 @@ func _on_MatchScreen_create_match() -> void:
 		hud.show_message("Login session has expired")
 		ui_layer.show_screen("ConnectionScreen")
 	else:
-		NakamaWebRTC.create_match(nakama_client, nakama_session)
+		NakamaWebRTC.create_match()
 		hud.hide_message()
 
 func _on_MatchScreen_join_match(match_id) -> void:
@@ -120,7 +126,7 @@ func _on_MatchScreen_join_match(match_id) -> void:
 		hud.show_message("Login session has expired")
 		ui_layer.show_screen("ConnectionScreen")
 	else:
-		NakamaWebRTC.join_match(nakama_client, nakama_session, match_id)
+		NakamaWebRTC.join_match(match_id)
 		hud.hide_message()
 
 func _on_MatchScreen_find_match(min_players: int):
@@ -139,7 +145,7 @@ func _on_MatchScreen_find_match(min_players: int):
 			},
 			query = "+properties.game:test_game",
 		}
-		NakamaWebRTC.start_matchmaking(nakama_client, nakama_session, data)
+		NakamaWebRTC.start_matchmaking(data)
 
 func _on_match_error(message: String):
 	if message != '':
