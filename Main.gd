@@ -287,6 +287,7 @@ remotesync func show_winner(name, session_id: String = '', score: int = 0, is_ma
 	if GameState.online_play:
 		if is_match:
 			stop_game()
+			ui_layer.show_screen("MatchScreen")
 		else:
 			ready_screen.hide_match_id()
 			ready_screen.reset_status("Waiting...")
