@@ -127,7 +127,7 @@ func create_match():
 	if _nakama_socket_required():
 		return
 	
-	leave(false)
+	leave()
 	match_mode = MatchMode.CREATE
 
 	var data = yield(nakama_socket.create_match_async(), "completed")
@@ -141,7 +141,7 @@ func join_match(_match_id: String):
 	if _nakama_socket_required():
 		return
 	
-	leave(false)
+	leave()
 	match_mode = MatchMode.JOIN
 	
 	var data = yield(nakama_socket.join_match_async(_match_id), "completed")
@@ -155,7 +155,7 @@ func start_matchmaking(data: Dictionary = {}):
 	if _nakama_socket_required():
 		return
 	
-	leave(false)
+	leave()
 	match_mode = MatchMode.MATCHMAKER
 	
 	if data.has('min_count'):
@@ -180,7 +180,7 @@ func start_playing():
 	assert(match_state == MatchState.READY)
 	match_state = MatchState.PLAYING
 
-func leave(close_socket = true):
+func leave(close_socket = false):
 	# WebRTC disconnect.
 	if _webrtc_multiplayer:
 		_webrtc_multiplayer.close()
