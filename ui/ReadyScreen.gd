@@ -2,17 +2,22 @@ extends Control
 
 var PeerStatus = preload("res://ui/PeerStatus.tscn");
 
-onready var ready_button = $Panel/ReadyButton
-onready var match_id_container = $Panel/MatchIDContainer
-onready var match_id_label = $Panel/MatchIDContainer/MatchID
-onready var status_container = $Panel/StatusContainer
+onready var ready_button := $Panel/ReadyButton
+onready var match_id_container := $Panel/MatchIDContainer
+onready var match_id_label := $Panel/MatchIDContainer/MatchID
+onready var status_container := $Panel/StatusContainer
 
 signal ready_pressed ()
 
-func initialize(players, match_id = ''):
-	for child in status_container.get_children():
-		child.queue_free()
-	ready_button.disabled = true
+func _ready() -> void:
+	clear_players()
+
+func initialize(players = [], match_id = '', clear = false):
+	if players.size() > 0 or clear:
+		clear_players()
+	
+	for session_id in players:
+		add_player(session_id, players[session_id]['username'])
 	
 	if match_id:
 		match_id_container.visible = true
@@ -20,8 +25,12 @@ func initialize(players, match_id = ''):
 	else:
 		match_id_container.visible = false
 	
-	for session_id in players:
-		add_player(session_id, players[session_id]['username'])
+	ready_button.grab_focus()
+
+func clear_players() -> void:
+	for child in status_container.get_children():
+		child.queue_free()
+	ready_button.disabled = true
 
 func hide_match_id() -> void:
 	match_id_container.visible = false
@@ -53,8 +62,15 @@ func reset_status(status):
 	for child in status_container.get_children():
 		child.set_status(status)
 
-func set_ready_button_enabled(enabled : bool = true):
+func set_score(session_id, score: int) -> void:
+	var status_node = status_container.get_node(session_id)
+	if status_node:
+		status_node.set_score(score)
+
+func set_ready_button_enabled(enabled: bool = true):
 	ready_button.disabled = !enabled
+	if enabled:
+		ready_button.grab_focus()
 
 func _on_ReadyButton_pressed() -> void:
 	emit_signal("ready_pressed")

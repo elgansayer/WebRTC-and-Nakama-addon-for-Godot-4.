@@ -12,6 +12,7 @@ var game_started := false
 
 var players := {}
 var players_ready := {}
+var players_score := {}
 
 func _ready():
 	nakama_client = Nakama.create_client(
@@ -140,19 +141,21 @@ func _on_MatchScreen_find_match(min_players: int):
 		}
 		NakamaWebRTC.start_matchmaking(nakama_client, nakama_session, data)
 
-func _on_match_error(message):
+func _on_match_error(message: String):
+	if message != '':
+		hud.show_message(message)
 	ui_layer.show_screen("MatchScreen")
-	hud.show_message(message)
 
 func _on_match_disconnected():
-	_on_match_error("Disconnected from server")
+	#_on_match_error("Disconnected from host")
+	_on_match_error('')
 
 func _on_match_created(match_id):
-	ui_layer.show_screen("ReadyScreen", [{}, match_id])
+	ui_layer.show_screen("ReadyScreen", [{}, match_id, true])
 	hud.show_exit_button()
 
 func _on_match_joined(match_id):
-	ui_layer.show_screen("ReadyScreen", [{}, match_id])
+	ui_layer.show_screen("ReadyScreen", [{}, match_id, true])
 	hud.show_exit_button()
 
 func _on_matchmaker_matched(_players):
@@ -240,8 +243,9 @@ func _on_game_started() -> void:
 func stop_game() -> void:
 	NakamaWebRTC.leave()
 	
-	players = {}
-	players_ready = {}
+	players.clear()
+	players_ready.clear()
+	players_score.clear()
 	
 	game.game_stop()
 
@@ -261,17 +265,31 @@ func _on_game_over(player_id: int) -> void:
 	if not GameState.online_play:
 		show_winner(players[player_id])
 	elif get_tree().is_network_server():
-		rpc("show_winner", players[player_id])
+		if not players_score.has(player_id):
+			players_score[player_id] = 1
+		else:
+			players_score[player_id] += 1
+		
+		var player_session_id = NakamaWebRTC.get_session_id(player_id)
+		var is_match: bool = players_score[player_id] >= 5
+		rpc("show_winner", players[player_id], player_session_id, players_score[player_id], is_match)
 
-remotesync func show_winner(name):
-	hud.show_message(name + " is the winner!")
+remotesync func show_winner(name, session_id: String = '', score: int = 0, is_match: bool = false):
+	if is_match:
+		hud.show_message(name + " WINS THE WHOLE MATCH!")
+	else:
+		hud.show_message(name + " wins this round!")
 	
 	yield(get_tree().create_timer(2.0), "timeout")
 	
 	if GameState.online_play:
-		ready_screen.hide_match_id()
-		ready_screen.reset_status("Waiting...")
-		ui_layer.show_screen("ReadyScreen")
+		if is_match:
+			stop_game()
+		else:
+			ready_screen.hide_match_id()
+			ready_screen.reset_status("Waiting...")
+			ready_screen.set_score(session_id, score)
+			ui_layer.show_screen("ReadyScreen")
 	else:
 		restart_game()
 

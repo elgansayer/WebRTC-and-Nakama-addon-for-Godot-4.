@@ -10,6 +10,7 @@ onready var camera := $Camera2D
 onready var original_camera_position: Vector2 = camera.global_position
 
 var game_started := false
+var game_over := false
 var players_alive := {}
 var players_setup := {}
 
@@ -31,6 +32,7 @@ remotesync func _do_game_setup(players: Dictionary) -> void:
 		game_stop()
 	
 	game_started = true
+	game_over = false
 	players_alive = players
 	
 	reload_map()
@@ -116,6 +118,7 @@ func _on_player_dead(player_id):
 	emit_signal("player_dead", player_id)
 	
 	players_alive.erase(player_id)
-	if players_alive.size() == 1:
+	if not game_over and players_alive.size() == 1:
+		game_over = true
 		var player_keys = players_alive.keys()
 		emit_signal("game_over", player_keys[0])

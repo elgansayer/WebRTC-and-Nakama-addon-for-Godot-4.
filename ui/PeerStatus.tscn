@@ -13,22 +13,21 @@ __meta__ = {
 
 [node name="ScoreLabel" type="Label" parent="."]
 margin_top = 17.0
-margin_right = 20.0
+margin_right = 50.0
 margin_bottom = 31.0
-rect_min_size = Vector2( 20, 0 )
+rect_min_size = Vector2( 50, 0 )
 text = "10"
-align = 2
 
 [node name="NameLabel" type="Label" parent="."]
-margin_left = 24.0
+margin_left = 54.0
 margin_top = 17.0
-margin_right = 310.0
+margin_right = 325.0
 margin_bottom = 31.0
 size_flags_horizontal = 3
 text = "User"
 
 [node name="StatusLabel" type="Label" parent="."]
-margin_left = 314.0
+margin_left = 329.0
 margin_top = 17.0
 margin_right = 600.0
 margin_bottom = 31.0

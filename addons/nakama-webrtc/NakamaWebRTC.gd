@@ -191,7 +191,7 @@ func get_my_session_id():
 		return my_session_id
 	return null
 
-func get_session(peer_id: int):
+func get_session_id(peer_id: int):
 	for session_id in players:
 		if players[session_id]['peer_id'] == peer_id:
 			return session_id
