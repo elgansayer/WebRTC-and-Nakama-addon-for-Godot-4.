@@ -9,8 +9,6 @@ var nakama_client: NakamaClient
 var nakama_session: NakamaSession
 var nakama_socket: NakamaSocket
 
-var game_started := false
-
 var players := {}
 var players_ready := {}
 var players_score := {}
@@ -177,8 +175,7 @@ func _on_player_left(player):
 	
 	ready_screen.remove_player(player.session_id)
 	
-	if game_started:
-		game.kill_player(player.peer_id)
+	game.kill_player(player.peer_id)
 	
 	players.erase(player.peer_id)
 	players_ready.erase(player.peer_id)
@@ -241,7 +238,6 @@ func start_game() -> void:
 	game.game_start(players)
 
 func _on_game_started() -> void:
-	game_started = true
 	ui_layer.hide_screen()
 	hud.hide_all()
 	hud.show_exit_button()
