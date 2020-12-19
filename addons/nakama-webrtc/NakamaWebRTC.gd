@@ -4,9 +4,9 @@ extends Node
 var min_players := 2
 var max_players := 4
 var ice_servers = [{ "urls": ["stun:stun.l.google.com:19302"] }]
+var nakama_socket: NakamaSocket setget set_nakama_socket
 
 # Nakama variables:
-var nakama_socket: NakamaSocket setget _set_readonly_variable
 var my_session_id: String setget _set_readonly_variable, get_my_session_id
 var match_id: String setget _set_readonly_variable, get_match_id
 var matchmaker_ticket: String setget _set_readonly_variable, get_matchmaker_ticket
@@ -100,17 +100,13 @@ static func unserialize_players(_players: Dictionary) -> Dictionary:
 func _set_readonly_variable(value) -> void:
 	pass
 
-func _disconnect_nakama_socket_signals() -> void:
+func set_nakama_socket(_nakama_socket: NakamaSocket) -> void:
 	if nakama_socket:
 		nakama_socket.disconnect("closed", self, "_on_nakama_closed")
 		nakama_socket.disconnect("received_error", self, "_on_nakama_error")
 		nakama_socket.disconnect("received_match_state", self, "_on_nakama_match_state")
 		nakama_socket.disconnect("received_match_presence", self, "_on_nakama_match_presence")
 		nakama_socket.disconnect("received_matchmaker_matched", self, "_on_nakama_matchmaker_matched")
-
-func _set_nakama_socket(_nakama_socket: NakamaSocket) -> void:
-	_disconnect_nakama_socket_signals()
-	leave()
 	
 	nakama_socket = _nakama_socket
 	if nakama_socket:
@@ -120,8 +116,18 @@ func _set_nakama_socket(_nakama_socket: NakamaSocket) -> void:
 		nakama_socket.connect("received_match_presence", self, "_on_nakama_match_presence")
 		nakama_socket.connect("received_matchmaker_matched", self, "_on_nakama_matchmaker_matched")
 
-func create_match(_nakama_socket: NakamaSocket) -> void:
-	_set_nakama_socket(_nakama_socket)
+func _nakama_socket_required() -> bool:
+	if not nakama_socket:
+		push_error("NakamaWebRTC: Cannot perform operation without nakama_socket")
+		emit_signal("error", "No connection to server")
+		return true
+	return false
+
+func create_match():
+	if _nakama_socket_required():
+		return
+	
+	leave()
 	match_mode = MatchMode.CREATE
 
 	var data = yield(nakama_socket.create_match_async(), "completed")
@@ -131,8 +137,11 @@ func create_match(_nakama_socket: NakamaSocket) -> void:
 	else:
 		_on_nakama_match_created(data)
 
-func join_match(_nakama_socket: NakamaSocket, _match_id: String) -> void:
-	_set_nakama_socket(_nakama_socket)
+func join_match(_match_id: String):
+	if _nakama_socket_required():
+		return
+	
+	leave()
 	match_mode = MatchMode.JOIN
 	
 	var data = yield(nakama_socket.join_match_async(_match_id), "completed")
@@ -142,8 +151,11 @@ func join_match(_nakama_socket: NakamaSocket, _match_id: String) -> void:
 	else:
 		_on_nakama_match_join(data)
 
-func start_matchmaking(_nakama_socket: NakamaSocket, data: Dictionary = {}) -> void:
-	_set_nakama_socket(_nakama_socket)
+func start_matchmaking(data: Dictionary = {}):
+	if _nakama_socket_required():
+		return
+	
+	leave()
 	match_mode = MatchMode.MATCHMAKER
 	
 	if data.has('min_count'):
@@ -180,10 +192,9 @@ func leave(close_socket = false):
 			yield(nakama_socket.leave_match_async(match_id), 'completed')
 		elif matchmaker_ticket:
 			yield(nakama_socket.remove_matchmaker_async(matchmaker_ticket), 'completed')
-		_disconnect_nakama_socket_signals()
 		if close_socket:
 			nakama_socket.close()
-		nakama_socket = null
+			self.nakama_socket = null
 	
 	# Initialize all the variables to their default state.
 	my_session_id = ''
