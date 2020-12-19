@@ -11,6 +11,12 @@ signal ready_pressed ()
 
 func _ready() -> void:
 	clear_players()
+	
+	OnlineMatch.connect("player_joined", self, "_on_OnlineMatch_player_joined")
+	OnlineMatch.connect("player_left", self, "_on_OnlineMatch_player_left")
+	OnlineMatch.connect("player_status_changed", self, "_on_OnlineMatch_player_status_changed")
+	OnlineMatch.connect("match_ready", self, "_on_OnlineMatch_match_ready")
+	OnlineMatch.connect("match_not_ready", self, "_on_OnlineMatch_match_not_ready")
 
 func initialize(players = [], match_id = '', clear = false):
 	if players.size() > 0 or clear:
@@ -77,3 +83,27 @@ func _on_ReadyButton_pressed() -> void:
 
 func _on_MatchCopyButton_pressed() -> void:
 	OS.clipboard = match_id_label.text
+
+#####
+# OnlineMatch callbacks:
+#####
+
+func _on_OnlineMatch_player_joined(player):
+	add_player(player.session_id, player.username)
+
+func _on_OnlineMatch_player_left(player):
+	remove_player(player.session_id)
+
+func _on_OnlineMatch_player_status_changed(player, status):
+	if status == OnlineMatch.PlayerStatus.CONNECTED:
+		# Don't go backwards from 'READY!'
+		if get_status(player.session_id) != 'READY!':
+			set_status(player.session_id, 'Connected.')
+	elif status == OnlineMatch.PlayerStatus.CONNECTING:
+		set_status(player.session_id, 'Connecting...')
+
+func _on_OnlineMatch_match_ready(_players):
+	set_ready_button_enabled(true)
+
+func _on_OnlineMatch_match_not_ready():
+	set_ready_button_enabled(false)

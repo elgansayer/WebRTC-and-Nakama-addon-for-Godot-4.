@@ -291,6 +291,8 @@ func _on_nakama_match_presence(data: NakamaRTAPI.MatchPresenceEvent):
 	for u in data.leaves:
 		if u.session_id == my_session_id:
 			continue
+		if not players.has(u.session_id):
+			continue
 		
 		var player = players[u.session_id]
 		_webrtc_disconnect_peer(player)

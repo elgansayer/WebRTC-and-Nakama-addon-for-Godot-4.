@@ -30,14 +30,11 @@ visible = false
 visible = false
 
 [node name="HUD" parent="." instance=ExtResource( 8 )]
+[connection signal="game_over" from="Game" to="." method="_on_Game_game_over"]
+[connection signal="game_started" from="Game" to="." method="_on_Game_game_started"]
+[connection signal="player_dead" from="Game" to="." method="_on_Game_player_dead"]
 [connection signal="change_screen" from="UILayer" to="." method="_on_UILayer_change_screen"]
 [connection signal="play_local" from="UILayer/TitleScreen" to="." method="_on_TitleScreen_play_local"]
 [connection signal="play_online" from="UILayer/TitleScreen" to="." method="_on_TitleScreen_play_online"]
-[connection signal="create_account" from="UILayer/ConnectionScreen" to="." method="_on_ConnectionScreen_create_account"]
-[connection signal="login" from="UILayer/ConnectionScreen" to="." method="_on_ConnectionScreen_login"]
-[connection signal="create_match" from="UILayer/MatchScreen" to="." method="_on_MatchScreen_create_match"]
-[connection signal="find_match" from="UILayer/MatchScreen" to="." method="_on_MatchScreen_find_match"]
-[connection signal="join_match" from="UILayer/MatchScreen" to="." method="_on_MatchScreen_join_match"]
 [connection signal="ready_pressed" from="UILayer/ReadyScreen" to="." method="_on_ReadyScreen_ready_pressed"]
-[connection signal="exit" from="HUD" to="." method="_on_HUD_exit"]
-[connection signal="start" from="HUD" to="." method="_on_HUD_start"]
+[connection signal="back_button" from="HUD" to="." method="_on_HUD_back_button"]
