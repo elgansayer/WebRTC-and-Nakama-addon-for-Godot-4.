@@ -100,14 +100,17 @@ static func unserialize_players(_players: Dictionary) -> Dictionary:
 func _set_readonly_variable(value) -> void:
 	pass
 
-func _set_nakama_socket(_nakama_socket: NakamaSocket) -> void:
-	leave()
+func _disconnect_nakama_socket_signals() -> void:
 	if nakama_socket:
 		nakama_socket.disconnect("closed", self, "_on_nakama_closed")
 		nakama_socket.disconnect("received_error", self, "_on_nakama_error")
 		nakama_socket.disconnect("received_match_state", self, "_on_nakama_match_state")
 		nakama_socket.disconnect("received_match_presence", self, "_on_nakama_match_presence")
 		nakama_socket.disconnect("received_matchmaker_matched", self, "_on_nakama_matchmaker_matched")
+
+func _set_nakama_socket(_nakama_socket: NakamaSocket) -> void:
+	leave()
+	_disconnect_nakama_socket_signals()
 	
 	nakama_socket = _nakama_socket
 	if nakama_socket:
@@ -177,9 +180,10 @@ func leave(close_socket = false):
 			yield(nakama_socket.leave_match_async(match_id), 'completed')
 		elif matchmaker_ticket:
 			yield(nakama_socket.remove_matchmaker_async(matchmaker_ticket), 'completed')
+		_disconnect_nakama_socket_signals()
 		if close_socket:
 			nakama_socket.close()
-			self.nakama_socket = null
+		nakama_socket = null
 	
 	# Initialize all the variables to their default state.
 	my_session_id = ''
