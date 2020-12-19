@@ -27,12 +27,12 @@ func _ready():
 	Online.nakama_scheme = 'https' if Build.NAKAMA_USE_SSL else 'http'
 
 #func _unhandled_input(event: InputEvent) -> void:
-#      # Trigger debugging action!
-#      if event.is_action_pressed("player_debug"):
-#              # Close all our peers to force a reconnect (to make sure it works).
-#              for session_id in NakamaWebRTC.webrtc_peers:
-#                      var webrtc_peer = NakamaWebRTC.webrtc_peers[session_id]
-#                      webrtc_peer.close()
+#	# Trigger debugging action!
+#	if event.is_action_pressed("player_debug"):
+#		# Close all our peers to force a reconnect (to make sure it works).
+#		for session_id in OnlineMatch.webrtc_peers:
+#			var webrtc_peer = OnlineMatch._webrtc_peers[session_id]
+#			webrtc_peer.close()
 
 #####
 # UI callbacks
