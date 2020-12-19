@@ -109,8 +109,8 @@ func _disconnect_nakama_socket_signals() -> void:
 		nakama_socket.disconnect("received_matchmaker_matched", self, "_on_nakama_matchmaker_matched")
 
 func _set_nakama_socket(_nakama_socket: NakamaSocket) -> void:
-	leave()
 	_disconnect_nakama_socket_signals()
+	leave()
 	
 	nakama_socket = _nakama_socket
 	if nakama_socket:
