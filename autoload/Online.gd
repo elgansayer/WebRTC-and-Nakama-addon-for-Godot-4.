@@ -26,7 +26,9 @@ func get_nakama_client() -> NakamaClient:
 			nakama_server_key,
 			nakama_host,
 			nakama_port,
-			nakama_scheme)
+			nakama_scheme,
+			Nakama.DEFAULT_TIMEOUT,
+			NakamaLogger.LOG_LEVEL.ERROR)
 	
 	return nakama_client
 

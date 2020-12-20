@@ -77,8 +77,10 @@ func _on_UILayer_change_screen(name, screen) -> void:
 func _on_HUD_back_button() -> void:
 	UI.hide_message()
 	
-	if game.game_started:
-		game.game_stop()
+	stop_game()
+	
+	if GameState.online_play:
+		OnlineMatch.leave()
 	
 	var current_screen_name = UI.ui_layer.current_screen_name
 	if current_screen_name == 'ConnectionScreen' or current_screen_name == 'MatchScreen':
@@ -114,6 +116,7 @@ func _on_OnlineMatch_joined(match_id):
 
 func _on_OnlineMatch_matchmaker_matched(_players):
 	UI.show_screen("ReadyScreen", [_players])
+	UI.hide_message()
 	UI.show_back_button()
 
 func _on_OnlineMatch_player_left(player) -> void:

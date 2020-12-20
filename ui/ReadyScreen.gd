@@ -35,6 +35,7 @@ func initialize(players = [], match_id = '', clear = false):
 
 func clear_players() -> void:
 	for child in status_container.get_children():
+		status_container.remove_child(child)
 		child.queue_free()
 	ready_button.disabled = true
 
