@@ -101,6 +101,9 @@ func _set_readonly_variable(value) -> void:
 	pass
 
 func set_nakama_socket(_nakama_socket: NakamaSocket) -> void:
+	if nakama_socket == _nakama_socket:
+		return
+	
 	if nakama_socket:
 		nakama_socket.disconnect("closed", self, "_on_nakama_closed")
 		nakama_socket.disconnect("received_error", self, "_on_nakama_error")
