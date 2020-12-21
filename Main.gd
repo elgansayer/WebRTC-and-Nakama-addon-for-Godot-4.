@@ -3,7 +3,6 @@ extends Node2D
 onready var game = $Game
 onready var ready_screen = $UILayer/ReadyScreen
 
-# @todo move to GameState?
 var players := {}
 
 var players_ready := {}
@@ -41,17 +40,10 @@ func _ready() -> void:
 func _on_TitleScreen_play_local() -> void:
 	GameState.online_play = false
 	
-	# Setup a local, 2-player game.
-	# @todo This should be stored in the GameState (I think)
-	players = {
-		1: "Player1",
-		2: "Player2",
-	}
-	
 	UI.hide_screen()
 	UI.show_back_button()
 	
-	game.game_start(players)
+	start_game()
 
 func _on_TitleScreen_play_online() -> void:
 	GameState.online_play = true
@@ -149,7 +141,6 @@ remotesync func player_ready(session_id: String) -> void:
 			start_game()
 
 func start_game() -> void:
-	# @todo This should be stashed on GameState
 	if GameState.online_play:
 		players = OnlineMatch.get_player_names_by_peer_id()
 	else:
