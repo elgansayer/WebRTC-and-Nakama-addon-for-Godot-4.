@@ -33,18 +33,18 @@ func _on_MatchButton_pressed() -> void:
 		# @todo Is there a sane way to avoid duplicating this code?
 		if not Online.is_nakama_socket_connected():
 			Online.connect_nakama_socket()
-			OnlineMatch.nakama_socket = yield(Online, "socket_connected")
+			yield(Online, "socket_connected")
 		
-		OnlineMatch.start_matchmaking(data)
+		OnlineMatch.start_matchmaking(Online.nakama_socket, data)
 
 func _on_CreateButton_pressed() -> void:
 	if _check_session():
 		# @todo Is there a sane way to avoid duplicating this code?
 		if not Online.is_nakama_socket_connected():
 			Online.connect_nakama_socket()
-			OnlineMatch.nakama_socket = yield(Online, "socket_connected")
+			yield(Online, "socket_connected")
 		
-		OnlineMatch.create_match()
+		OnlineMatch.create_match(Online.nakama_socket)
 
 func _on_JoinButton_pressed() -> void:
 	var match_id = join_match_id_control.text
@@ -56,9 +56,9 @@ func _on_JoinButton_pressed() -> void:
 		# @todo Is there a sane way to avoid duplicating this code?
 		if not Online.is_nakama_socket_connected():
 			Online.connect_nakama_socket()
-			OnlineMatch.nakama_socket = yield(Online, "socket_connected")
-			
-		OnlineMatch.join_match(match_id)
+			yield(Online, "socket_connected")
+		
+		OnlineMatch.join_match(Online.nakama_socket, match_id)
 
 func _on_PasteButton_pressed() -> void:
 	join_match_id_control.text = OS.clipboard

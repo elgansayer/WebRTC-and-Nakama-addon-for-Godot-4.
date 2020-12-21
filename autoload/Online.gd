@@ -42,9 +42,6 @@ func set_nakama_session(_nakama_session: NakamaSession) -> void:
 	
 	emit_signal("session_changed", nakama_session)
 
-func is_nakama_socket_connected() -> bool:
-	return nakama_socket != null && nakama_socket.is_connected_to_host()
-
 func connect_nakama_socket() -> void:
 	if nakama_socket != null:
 		return
@@ -58,3 +55,6 @@ func connect_nakama_socket() -> void:
 	_nakama_socket_connecting = false
 	
 	emit_signal("socket_connected", nakama_socket)
+
+func is_nakama_socket_connected() -> bool:
+	   return nakama_socket != null && nakama_socket.is_connected_to_host()
