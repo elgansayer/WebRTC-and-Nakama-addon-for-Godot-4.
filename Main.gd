@@ -197,6 +197,8 @@ remotesync func show_winner(name: String, session_id: String = '', score: int = 
 		UI.show_message(name + " wins this round!")
 	
 	yield(get_tree().create_timer(2.0), "timeout")
+	if not game.game_started:
+		return
 	
 	if GameState.online_play:
 		if is_match:
