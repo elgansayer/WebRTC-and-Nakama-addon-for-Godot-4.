@@ -106,8 +106,10 @@ config/icon="res://icon.png"
 
 Build="*res://autoload/Build.gd"
 Nakama="*res://addons/com.heroiclabs.nakama/Nakama.gd"
-NakamaWebRTC="*res://addons/nakama-webrtc/NakamaWebRTC.gd"
+OnlineMatch="*res://addons/nakama-webrtc/NakamaWebRTC.gd"
+Online="*res://autoload/Online.gd"
 GameState="*res://autoload/GameState.gd"
+UI="*res://autoload/UI.gd"
 
 [display]
 
