@@ -3,9 +3,9 @@ extends CanvasLayer
 onready var message_label = $Message
 onready var back_button = $BackButton
 
-signal back_button
+signal back_button ()
 
-func show_message(text) -> void:
+func show_message(text: String) -> void:
 	message_label.text = text
 	message_label.visible = true
 
