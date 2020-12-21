@@ -17,7 +17,7 @@ var _nakama_socket_connecting := false
 signal session_changed (nakama_session)
 signal socket_connected (nakama_socket)
 
-func _set_readonly_variable(value) -> void:
+func _set_readonly_variable(_value) -> void:
 	pass
 
 func get_nakama_client() -> NakamaClient:

@@ -97,7 +97,7 @@ static func unserialize_players(_players: Dictionary) -> Dictionary:
 		result[key] = Player.from_dict(_players[key])
 	return result
 
-func _set_readonly_variable(value) -> void:
+func _set_readonly_variable(_value) -> void:
 	pass
 
 func _set_nakama_socket(_nakama_socket: NakamaSocket) -> void:

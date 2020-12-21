@@ -9,7 +9,7 @@ var players := {}
 var players_ready := {}
 var players_score := {}
 
-func _ready():
+func _ready() -> void:
 	UI.setup($UILayer, $HUD)
 	
 	OnlineMatch.connect("error", self, "_on_OnlineMatch_error")
@@ -61,7 +61,7 @@ func _on_TitleScreen_play_online() -> void:
 	
 	UI.show_screen("MatchScreen")
 
-func _on_UILayer_change_screen(name, screen) -> void:
+func _on_UILayer_change_screen(name: String, _screen) -> void:
 	if name == 'MatchScreen':
 		if not Online.nakama_session or Online.nakama_session.is_expired():
 			# If we were previously connected, then show a message.
@@ -106,15 +106,15 @@ func _on_OnlineMatch_disconnected():
 	#_on_OnlineMatch_error("Disconnected from host")
 	_on_OnlineMatch_error('')
 
-func _on_OnlineMatch_created(match_id):
+func _on_OnlineMatch_created(match_id: String):
 	UI.show_screen("ReadyScreen", [{}, match_id, true])
 	UI.show_back_button()
 
-func _on_OnlineMatch_joined(match_id):
+func _on_OnlineMatch_joined(match_id: String):
 	UI.show_screen("ReadyScreen", [{}, match_id, true])
 	UI.show_back_button()
 
-func _on_OnlineMatch_matchmaker_matched(_players):
+func _on_OnlineMatch_matchmaker_matched(_players: Dictionary):
 	UI.show_screen("ReadyScreen", [_players])
 	UI.hide_message()
 	UI.show_back_button()
@@ -138,7 +138,7 @@ func _on_OnlineMatch_player_status_changed(player, status) -> void:
 # Gameplay methods and callbacks
 #####
 
-remotesync func player_ready(session_id):
+remotesync func player_ready(session_id: String) -> void:
 	ready_screen.set_status(session_id, "READY!")
 	
 	if get_tree().is_network_server() and not players_ready.has(session_id):
@@ -178,7 +178,7 @@ func _on_Game_game_started() -> void:
 	UI.hide_all()
 	UI.show_back_button()
 
-func _on_Game_player_dead(player_id : int) -> void:
+func _on_Game_player_dead(player_id: int) -> void:
 	if GameState.online_play:
 		var my_id = get_tree().get_network_unique_id()
 		if player_id == my_id:
@@ -199,7 +199,7 @@ func _on_Game_game_over(player_id: int) -> void:
 		var is_match: bool = players_score[player_id] >= 5
 		rpc("show_winner", players[player_id], player_session_id, players_score[player_id], is_match)
 
-remotesync func show_winner(name, session_id: String = '', score: int = 0, is_match: bool = false):
+remotesync func show_winner(name: String, session_id: String = '', score: int = 0, is_match: bool = false) -> void:
 	if is_match:
 		UI.show_message(name + " WINS THE WHOLE MATCH!")
 	else:
