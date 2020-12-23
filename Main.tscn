@@ -15,6 +15,7 @@ script = ExtResource( 1 )
 [node name="Game" parent="." instance=ExtResource( 3 )]
 
 [node name="UILayer" type="CanvasLayer" parent="."]
+pause_mode = 2
 script = ExtResource( 5 )
 
 [node name="TitleScreen" parent="UILayer" instance=ExtResource( 7 )]
@@ -30,6 +31,7 @@ visible = false
 visible = false
 
 [node name="HUD" parent="." instance=ExtResource( 8 )]
+pause_mode = 2
 [connection signal="game_over" from="Game" to="." method="_on_Game_game_over"]
 [connection signal="game_started" from="Game" to="." method="_on_Game_game_started"]
 [connection signal="player_dead" from="Game" to="." method="_on_Game_player_dead"]
