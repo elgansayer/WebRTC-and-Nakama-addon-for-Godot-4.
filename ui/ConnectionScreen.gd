@@ -88,7 +88,8 @@ func _on_Create_Account_pressed() -> void:
 		UI.show_message(msg)
 		UI.show_screen("ConnectionScreen", [false])
 	else:
-		_save_credentials()
+		if save_credentials:
+			_save_credentials()
 		Online.nakama_session = nakama_session
 		UI.hide_all()
 		UI.show_screen("MatchScreen")
