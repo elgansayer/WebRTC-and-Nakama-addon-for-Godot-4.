@@ -35,9 +35,9 @@ func initialize(switch_to_login: bool = true) -> void:
 	if switch_to_login:
 		tab_container.current_tab = 0
 	
-	# If we have a stored email and password, attempt to login straight away.
-	if email != '' and password != '':
-		do_login()
+		# If we have a stored email and password, attempt to login straight away.
+		if email != '' and password != '':
+			do_login()
 
 func do_login(save_credentials: bool = false) -> void:
 	UI.hide_screen()
