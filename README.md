@@ -19,7 +19,7 @@ Getting Started
 
 2. Add the `Nakama.gd` singleton (in `addons/com.heroiclabs.nakama/`) as an [autoload in Godot](https://docs.godotengine.org/en/stable/getting_started/step_by_step/singletons_autoload.html).
 
-3. Add the `NakamaWebRTC.gd` singleton (in `addons/nakama-webrtc`) as an autoload as well.
+3. Add the `OnlineMatch.gd` singleton (in `addons/nakama-webrtc`) as an autoload as well.
 
 Demo and Template
 -----------------
