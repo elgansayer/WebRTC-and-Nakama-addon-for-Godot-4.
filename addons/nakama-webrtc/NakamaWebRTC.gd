@@ -3,6 +3,7 @@ extends Node
 # Variables for developers to customize.
 var min_players := 2
 var max_players := 4
+var client_version := ''
 var ice_servers = [{ "urls": ["stun:stun.l.google.com:19302"] }]
 
 # Nakama variables:
@@ -158,6 +159,17 @@ func start_matchmaking(_nakama_socket: NakamaSocket, data: Dictionary = {}) -> v
 	else:
 		data['max_count'] = max_players
 	
+	if client_version != '':
+		if not data.has('string_properties'):
+			data['string_properties'] = {}
+		data['string_properties']['client_version'] = client_version
+		
+		var query = '+properties.client_version:' + client_version
+		if data.has('query'):
+			data['query'] += ' ' + query
+		else:
+			data['query'] = query
+	
 	match_state = MatchState.MATCHING
 	var result = yield(nakama_socket.add_matchmaker_async(data.get('query', '*'), data['min_count'], data['max_count'], data.get('string_properties', {}), data.get('numeric_properties', {})), 'completed')
 	if result.is_exception():
@@ -282,6 +294,7 @@ func _on_nakama_match_presence(data: NakamaRTAPI.MatchPresenceEvent) -> void:
 				# Tell this player (and the others) about all the players peer ids.
 				nakama_socket.send_match_state_async(match_id, MatchOpCode.JOIN_SUCCESS, JSON.print({
 					players = serialize_players(players),
+					client_version = client_version,
 				}))
 			else:
 				# Tell this player that we're full up!
@@ -381,6 +394,12 @@ func _on_nakama_match_state(data: NakamaRTAPI.MatchData) -> void:
 					_webrtc_multiplayer.remove_peer(players[session_id]['peer_id'])
 					_webrtc_reconnect_peer(players[session_id])
 	if data.op_code == MatchOpCode.JOIN_SUCCESS && match_mode == MatchMode.JOIN:
+		var host_client_version = content.get('client_version', '')
+		if client_version != host_client_version:
+			leave()
+			emit_signal("error", "Client version doesn't match host")
+			return
+		
 		var content_players = unserialize_players(content['players'])
 		for session_id in content_players:
 			if not players.has(session_id):
