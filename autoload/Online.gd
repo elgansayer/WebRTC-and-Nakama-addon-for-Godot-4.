@@ -1,6 +1,8 @@
 extends Node
 
-# For the developer to customize:
+# For developers to set from the outside, for example:
+#   Online.nakama_host = 'nakama.example.com'
+#   Online.nakama_scheme = 'https'
 var nakama_server_key: String = 'defaultkey'
 var nakama_host: String = 'localhost'
 var nakama_port: int = 7350

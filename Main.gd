@@ -17,16 +17,6 @@ func _ready() -> void:
 	OnlineMatch.connect("match_joined", self, "_on_OnlineMatch_joined")
 	OnlineMatch.connect("matchmaker_matched", self, "_on_OnlineMatch_matchmaker_matched")
 	OnlineMatch.connect("player_left", self, "_on_OnlineMatch_player_left")
-	
-	# Replace Nakama server information with values in Build.gd, which will be
-	# filled in by the build system for production builds.
-	Online.nakama_server_key = Build.NAKAMA_SERVER_KEY
-	Online.nakama_host = Build.NAKAMA_HOST
-	Online.nakama_port = Build.NAKAMA_PORT
-	Online.nakama_scheme = 'https' if Build.NAKAMA_USE_SSL else 'http'
-	
-	# Set the client version based on value from the build.
-	OnlineMatch.client_version = Build.CLIENT_VERSION
 
 #func _unhandled_input(event: InputEvent) -> void:
 #	# Trigger debugging action!
