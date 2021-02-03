@@ -13,6 +13,11 @@ var nakama_client: NakamaClient setget _set_readonly_variable, get_nakama_client
 var nakama_session: NakamaSession setget set_nakama_session
 var nakama_socket: NakamaSocket setget _set_readonly_variable
 
+const CREDENTIALS_FILENAME = 'user://credentials.json'
+
+var _user_credentials := {}
+var _nakama_session_resumable: GDScriptFunctionState
+
 # Internal variable for initializing the socket.
 var _nakama_socket_connecting := false
 
@@ -64,3 +69,53 @@ func connect_nakama_socket() -> void:
 
 func is_nakama_socket_connected() -> bool:
 	   return nakama_socket != null && nakama_socket.is_connected_to_host()
+
+func _load_credentials() -> void:
+	var file = File.new()
+	if file.file_exists(CREDENTIALS_FILENAME):
+		file.open(CREDENTIALS_FILENAME, File.READ)
+		var result := JSON.parse(file.get_as_text())
+		if result.result is Dictionary:
+			_user_credentials = result.result
+		file.close()
+
+func _save_credentials() -> void:
+	var file = File.new()
+	file.open(CREDENTIALS_FILENAME, File.WRITE)
+	file.store_line(JSON.print(_user_credentials))
+	file.close()
+
+func set_user_credentials(credentials: Dictionary, save: bool = false) -> void:
+	_user_credentials = credentials
+	if save:
+		_save_credentials()
+
+# Returns a GDScriptFunctionState that we can resume manually.
+func _resumable():
+	var value = yield()
+	if value is NakamaSession:
+		if value.is_exception():
+			return false
+		else:
+			nakama_session = value
+			return true
+	return value
+
+func _resume_nakama_session(value):
+	if _nakama_session_resumable:
+		_nakama_session_resumable.resume(value)
+		_nakama_session_resumable = null
+
+func ensure_nakama_session():
+	if _nakama_session_resumable:
+		return _nakama_session_resumable
+	_nakama_session_resumable = _resumable()
+	
+	if nakama_session and not nakama_session.is_expired():
+		call_deferred('_resume_nakama_session', true)
+	elif not _user_credentials.has_all(['email', 'password']):
+		call_deferred('_resume_nakama_session', false)
+	else:
+		nakama_client.authenticate_email_async(_user_credentials['email'], _user_credentials['password'], null, false).connect("completed", self, "_resume_nakama_session")
+	
+	return _nakama_session_resumable
