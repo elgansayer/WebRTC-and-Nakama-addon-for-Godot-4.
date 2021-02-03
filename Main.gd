@@ -44,16 +44,9 @@ func _on_TitleScreen_play_online() -> void:
 	# Show the game map in the background because we have nothing better.
 	game.reload_map()
 	
-	UI.show_screen("MatchScreen")
+	UI.show_screen("ConnectionScreen")
 
 func _on_UILayer_change_screen(name: String, _screen) -> void:
-	if name == 'MatchScreen':
-		if not Online.nakama_session or Online.nakama_session.is_expired():
-			# If we were previously connected, then show a message.
-			if Online.nakama_session:
-				UI.show_message("Login session has expired")
-			UI.show_screen("ConnectionScreen")
-	
 	if name == 'TitleScreen':
 		UI.hide_back_button()
 	else:

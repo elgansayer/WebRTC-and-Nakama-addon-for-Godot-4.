@@ -201,7 +201,7 @@ custom_fonts/font = SubResource( 1 )
 pressed = true
 text = "Save email and password"
 
-[node name="Create Account" type="Button" parent="TabContainer/Create Account"]
+[node name="CreateAccountButton" type="Button" parent="TabContainer/Create Account"]
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -211,4 +211,4 @@ margin_right = -228.737
 margin_bottom = -22.0
 text = "Create Account"
 [connection signal="pressed" from="TabContainer/Login/LoginButton" to="." method="_on_LoginButton_pressed"]
-[connection signal="pressed" from="TabContainer/Create Account/Create Account" to="." method="_on_Create_Account_pressed"]
+[connection signal="pressed" from="TabContainer/Create Account/CreateAccountButton" to="." method="_on_CreateAccountButton_pressed"]
