@@ -58,8 +58,10 @@ func _create_match() -> void:
 	OnlineMatch.create_match(Online.nakama_socket)
 
 func _join_match() -> void:
-	var match_id = join_match_id_control.text
-	if not match_id:
+	var match_id = join_match_id_control.text.strip_edges()
+	if not match_id.ends_with('.'):
+		match_id += '.'
+	if match_id == '':
 		UI.show_message("Need to paste Match ID to join")
 		return
 	
