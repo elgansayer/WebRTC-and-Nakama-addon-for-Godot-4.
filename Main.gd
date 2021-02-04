@@ -13,9 +13,7 @@ func _ready() -> void:
 	
 	OnlineMatch.connect("error", self, "_on_OnlineMatch_error")
 	OnlineMatch.connect("disconnected", self, "_on_OnlineMatch_disconnected")
-	OnlineMatch.connect("match_created", self, "_on_OnlineMatch_created")
-	OnlineMatch.connect("match_joined", self, "_on_OnlineMatch_joined")
-	OnlineMatch.connect("matchmaker_matched", self, "_on_OnlineMatch_matchmaker_matched")
+	OnlineMatch.connect("player_status_changed", self, "_on_OnlineMatch_player_status_changed")
 	OnlineMatch.connect("player_left", self, "_on_OnlineMatch_player_left")
 
 #func _unhandled_input(event: InputEvent) -> void:
@@ -83,19 +81,6 @@ func _on_OnlineMatch_error(message: String):
 func _on_OnlineMatch_disconnected():
 	#_on_OnlineMatch_error("Disconnected from host")
 	_on_OnlineMatch_error('')
-
-func _on_OnlineMatch_created(match_id: String):
-	UI.show_screen("ReadyScreen", [{}, match_id, true])
-	UI.show_back_button()
-
-func _on_OnlineMatch_joined(match_id: String):
-	UI.show_screen("ReadyScreen", [{}, match_id, true])
-	UI.show_back_button()
-
-func _on_OnlineMatch_matchmaker_matched(_players: Dictionary):
-	UI.show_screen("ReadyScreen", [_players])
-	UI.hide_message()
-	UI.show_back_button()
 
 func _on_OnlineMatch_player_left(player) -> void:
 	UI.show_message(player.username + " has left")
