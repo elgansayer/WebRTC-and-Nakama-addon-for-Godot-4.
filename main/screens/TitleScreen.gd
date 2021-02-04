@@ -1,4 +1,4 @@
-extends Control
+extends "res://main/Screen.gd"
 
 signal play_local
 signal play_online

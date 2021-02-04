@@ -1,4 +1,4 @@
-extends Control
+extends "res://main/Screen.gd"
 
 onready var tab_container := $TabContainer
 onready var login_email_field := $TabContainer/Login/GridContainer/Email
@@ -33,7 +33,7 @@ func _save_credentials() -> void:
 	file.store_line(JSON.print(credentials))
 	file.close()
 
-func initialize(info: Dictionary = {}) -> void:
+func _show_screen(info: Dictionary = {}) -> void:
 	_reconnect = info.get('reconnect', false)
 	
 	tab_container.current_tab = 0
@@ -46,15 +46,15 @@ func do_login(save_credentials: bool = false) -> void:
 	visible = false
 	
 	if _reconnect:
-		UI.show_message("Session expired! Reconnecting...")
+		ui_layer.show_message("Session expired! Reconnecting...")
 	else:
-		UI.show_message("Logging in...")
+		ui_layer.show_message("Logging in...")
 	
 	var nakama_session = yield(Online.nakama_client.authenticate_email_async(email, password, null, false), "completed")
 	
 	if nakama_session.is_exception():
 		visible = true
-		UI.show_message("Login failed!")
+		ui_layer.show_message("Login failed!")
 		
 		# Clear stored email and password, but leave the fields alone so the
 		# user can attempt to correct them.
@@ -68,10 +68,10 @@ func do_login(save_credentials: bool = false) -> void:
 		if save_credentials:
 			_save_credentials()
 		Online.nakama_session = nakama_session
-		UI.hide_message()
+		ui_layer.hide_message()
 		
 		if not _reconnect:
-			UI.show_screen("MatchScreen")
+			ui_layer.show_screen("MatchScreen")
 
 func _on_LoginButton_pressed() -> void:
 	email = login_email_field.text.strip_edges()
@@ -86,17 +86,17 @@ func _on_CreateAccountButton_pressed() -> void:
 	var save_credentials = $"TabContainer/Create Account/GridContainer/SaveCheckBox".pressed
 	
 	if email == '':
-		UI.show_message("Must provide email")
+		ui_layer.show_message("Must provide email")
 		return
 	if password == '':
-		UI.show_message("Must provide password")
+		ui_layer.show_message("Must provide password")
 		return
 	if username == '':
-		UI.show_message("Must provide username")
+		ui_layer.show_message("Must provide username")
 		return
 	
 	visible = false
-	UI.show_message("Creating account...")
+	ui_layer.show_message("Creating account...")
 
 	var nakama_session = yield(Online.nakama_client.authenticate_email_async(email, password, username, true), "completed")
 	
@@ -110,7 +110,7 @@ func _on_CreateAccountButton_pressed() -> void:
 			msg = 'E-mail already in use.'
 		elif msg == '':
 			msg = "Unable to create account"
-		UI.show_message(msg)
+		ui_layer.show_message(msg)
 		
 		# We always set Online.nakama_session in case something is yielding
 		# on the "session_changed" signal.
@@ -119,5 +119,5 @@ func _on_CreateAccountButton_pressed() -> void:
 		if save_credentials:
 			_save_credentials()
 		Online.nakama_session = nakama_session
-		UI.hide_message()
-		UI.show_screen("MatchScreen")
+		ui_layer.hide_message()
+		ui_layer.show_screen("MatchScreen")

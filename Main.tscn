@@ -1,13 +1,13 @@
 [gd_scene load_steps=9 format=2]
 
 [ext_resource path="res://Main.gd" type="Script" id=1]
-[ext_resource path="res://ui/ConnectionScreen.tscn" type="PackedScene" id=2]
+[ext_resource path="res://main/screens/ConnectionScreen.tscn" type="PackedScene" id=2]
 [ext_resource path="res://Game.tscn" type="PackedScene" id=3]
-[ext_resource path="res://ui/MatchScreen.tscn" type="PackedScene" id=4]
-[ext_resource path="res://UILayer.gd" type="Script" id=5]
-[ext_resource path="res://ui/ReadyScreen.tscn" type="PackedScene" id=6]
-[ext_resource path="res://ui/TitleScreen.tscn" type="PackedScene" id=7]
-[ext_resource path="res://HUD.tscn" type="PackedScene" id=8]
+[ext_resource path="res://main/screens/MatchScreen.tscn" type="PackedScene" id=4]
+[ext_resource path="res://main/UILayer.gd" type="Script" id=5]
+[ext_resource path="res://main/screens/ReadyScreen.tscn" type="PackedScene" id=6]
+[ext_resource path="res://main/screens/TitleScreen.tscn" type="PackedScene" id=7]
+[ext_resource path="res://assets/fonts/monogram.tres" type="DynamicFont" id=8]
 
 [node name="Main" type="Node2D"]
 script = ExtResource( 1 )
@@ -18,25 +18,61 @@ script = ExtResource( 1 )
 pause_mode = 2
 script = ExtResource( 5 )
 
-[node name="TitleScreen" parent="UILayer" instance=ExtResource( 7 )]
+[node name="Screens" type="Control" parent="UILayer"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="TitleScreen" parent="UILayer/Screens" instance=ExtResource( 7 )]
 visible = false
 
-[node name="ConnectionScreen" parent="UILayer" instance=ExtResource( 2 )]
+[node name="ConnectionScreen" parent="UILayer/Screens" instance=ExtResource( 2 )]
 visible = false
 
-[node name="MatchScreen" parent="UILayer" instance=ExtResource( 4 )]
+[node name="MatchScreen" parent="UILayer/Screens" instance=ExtResource( 4 )]
 visible = false
 
-[node name="ReadyScreen" parent="UILayer" instance=ExtResource( 6 )]
+[node name="ReadyScreen" parent="UILayer/Screens" instance=ExtResource( 6 )]
 visible = false
 
-[node name="HUD" parent="." instance=ExtResource( 8 )]
-pause_mode = 2
+[node name="Overlay" type="Control" parent="UILayer"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+__meta__ = {
+"_edit_use_anchors_": false
+}
+
+[node name="Message" type="Label" parent="UILayer/Overlay"]
+visible = false
+anchor_right = 1.0
+margin_top = 40.0
+margin_bottom = 48.0
+custom_fonts/font = ExtResource( 8 )
+text = "Waiting for players..."
+align = 1
+
+[node name="BackButton" type="Button" parent="UILayer/Overlay"]
+visible = false
+anchor_left = 1.0
+anchor_right = 1.0
+margin_left = -40.0
+margin_top = 5.0
+margin_right = -5.0
+margin_bottom = 54.0
+custom_fonts/font = ExtResource( 8 )
+text = "X"
+__meta__ = {
+"_edit_use_anchors_": false
+}
 [connection signal="game_over" from="Game" to="." method="_on_Game_game_over"]
 [connection signal="game_started" from="Game" to="." method="_on_Game_game_started"]
 [connection signal="player_dead" from="Game" to="." method="_on_Game_player_dead"]
+[connection signal="back_button" from="UILayer" to="." method="_on_UILayer_back_button"]
 [connection signal="change_screen" from="UILayer" to="." method="_on_UILayer_change_screen"]
-[connection signal="play_local" from="UILayer/TitleScreen" to="." method="_on_TitleScreen_play_local"]
-[connection signal="play_online" from="UILayer/TitleScreen" to="." method="_on_TitleScreen_play_online"]
-[connection signal="ready_pressed" from="UILayer/ReadyScreen" to="." method="_on_ReadyScreen_ready_pressed"]
-[connection signal="back_button" from="HUD" to="." method="_on_HUD_back_button"]
+[connection signal="play_local" from="UILayer/Screens/TitleScreen" to="." method="_on_TitleScreen_play_local"]
+[connection signal="play_online" from="UILayer/Screens/TitleScreen" to="." method="_on_TitleScreen_play_online"]
+[connection signal="ready_pressed" from="UILayer/Screens/ReadyScreen" to="." method="_on_ReadyScreen_ready_pressed"]
+[connection signal="pressed" from="UILayer/Overlay/BackButton" to="UILayer" method="_on_BackButton_pressed"]

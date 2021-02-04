@@ -1,19 +1,19 @@
 [gd_scene load_steps=6 format=2]
 
 [ext_resource path="res://assets/theme.tres" type="Theme" id=1]
-[ext_resource path="res://ui/ConnectionScreen.gd" type="Script" id=2]
+[ext_resource path="res://assets/fonts/monogram.ttf" type="DynamicFontData" id=2]
 [ext_resource path="res://assets/fonts/monogram.tres" type="DynamicFont" id=3]
-[ext_resource path="res://assets/fonts/monogram.ttf" type="DynamicFontData" id=4]
+[ext_resource path="res://main/screens/ConnectionScreen.gd" type="Script" id=4]
 
 [sub_resource type="DynamicFont" id=1]
 size = 36
-font_data = ExtResource( 4 )
+font_data = ExtResource( 2 )
 
 [node name="ConnectionScreen" type="Control"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 theme = ExtResource( 1 )
-script = ExtResource( 2 )
+script = ExtResource( 4 )
 __meta__ = {
 "_edit_use_anchors_": false
 }

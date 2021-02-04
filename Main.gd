@@ -1,7 +1,8 @@
 extends Node2D
 
 onready var game = $Game
-onready var ready_screen = $UILayer/ReadyScreen
+onready var ui_layer: UILayer = $UILayer
+onready var ready_screen = $UILayer/Screens/ReadyScreen
 
 var players := {}
 
@@ -9,8 +10,6 @@ var players_ready := {}
 var players_score := {}
 
 func _ready() -> void:
-	UI.setup($UILayer, $HUD)
-	
 	OnlineMatch.connect("error", self, "_on_OnlineMatch_error")
 	OnlineMatch.connect("disconnected", self, "_on_OnlineMatch_disconnected")
 	OnlineMatch.connect("player_status_changed", self, "_on_OnlineMatch_player_status_changed")
@@ -31,8 +30,8 @@ func _ready() -> void:
 func _on_TitleScreen_play_local() -> void:
 	GameState.online_play = false
 	
-	UI.hide_screen()
-	UI.show_back_button()
+	ui_layer.hide_screen()
+	ui_layer.show_back_button()
 	
 	start_game()
 
@@ -42,29 +41,25 @@ func _on_TitleScreen_play_online() -> void:
 	# Show the game map in the background because we have nothing better.
 	game.reload_map()
 	
-	UI.show_screen("ConnectionScreen")
+	ui_layer.show_screen("ConnectionScreen")
 
 func _on_UILayer_change_screen(name: String, _screen) -> void:
 	if name == 'TitleScreen':
-		UI.hide_back_button()
+		ui_layer.hide_back_button()
 	else:
-		UI.show_back_button()
+		ui_layer.show_back_button()
 
-func _on_HUD_back_button() -> void:
-	UI.hide_message()
+func _on_UILayer_back_button() -> void:
+	ui_layer.hide_message()
 	
 	stop_game()
 	
-	if GameState.online_play:
-		OnlineMatch.leave()
-	
-	var current_screen_name = UI.ui_layer.current_screen_name
-	if current_screen_name == 'ConnectionScreen' or current_screen_name == 'MatchScreen':
-		UI.show_screen("TitleScreen")
+	if ui_layer.current_screen_name in ['ConnectionScreen', 'MatchScreen']:
+		ui_layer.show_screen("TitleScreen")
 	elif not GameState.online_play:
-		UI.show_screen("TitleScreen")
+		ui_layer.show_screen("TitleScreen")
 	else:
-		UI.show_screen("MatchScreen")
+		ui_layer.show_screen("MatchScreen")
 
 func _on_ReadyScreen_ready_pressed() -> void:
 	rpc("player_ready", OnlineMatch.get_my_session_id())
@@ -75,15 +70,15 @@ func _on_ReadyScreen_ready_pressed() -> void:
 
 func _on_OnlineMatch_error(message: String):
 	if message != '':
-		UI.show_message(message)
-	UI.show_screen("MatchScreen")
+		ui_layer.show_message(message)
+	ui_layer.show_screen("MatchScreen")
 
 func _on_OnlineMatch_disconnected():
 	#_on_OnlineMatch_error("Disconnected from host")
 	_on_OnlineMatch_error('')
 
 func _on_OnlineMatch_player_left(player) -> void:
-	UI.show_message(player.username + " has left")
+	ui_layer.show_message(player.username + " has left")
 	
 	game.kill_player(player.peer_id)
 	
@@ -136,15 +131,15 @@ func restart_game() -> void:
 	start_game()
 
 func _on_Game_game_started() -> void:
-	UI.hide_screen()
-	UI.hide_all()
-	UI.show_back_button()
+	ui_layer.hide_screen()
+	ui_layer.hide_all()
+	ui_layer.show_back_button()
 
 func _on_Game_player_dead(player_id: int) -> void:
 	if GameState.online_play:
 		var my_id = get_tree().get_network_unique_id()
 		if player_id == my_id:
-			UI.show_message("You lose!")
+			ui_layer.show_message("You lose!")
 
 func _on_Game_game_over(player_id: int) -> void:
 	players_ready.clear()
@@ -163,9 +158,9 @@ func _on_Game_game_over(player_id: int) -> void:
 
 remotesync func show_winner(name: String, session_id: String = '', score: int = 0, is_match: bool = false) -> void:
 	if is_match:
-		UI.show_message(name + " WINS THE WHOLE MATCH!")
+		ui_layer.show_message(name + " WINS THE WHOLE MATCH!")
 	else:
-		UI.show_message(name + " wins this round!")
+		ui_layer.show_message(name + " wins this round!")
 	
 	yield(get_tree().create_timer(2.0), "timeout")
 	if not game.game_started:
@@ -174,11 +169,12 @@ remotesync func show_winner(name: String, session_id: String = '', score: int = 
 	if GameState.online_play:
 		if is_match:
 			stop_game()
-			UI.show_screen("MatchScreen")
+			ui_layer.show_screen("MatchScreen")
 		else:
 			ready_screen.hide_match_id()
 			ready_screen.reset_status("Waiting...")
 			ready_screen.set_score(session_id, score)
-			UI.show_screen("ReadyScreen")
+			ui_layer.show_screen("ReadyScreen")
 	else:
 		restart_game()
+
