@@ -1,5 +1,7 @@
 extends Control
 
+export (bool) var add_to_stack := true
+
 var ui_layer: UILayer
 
 func _setup_screen(_ui_layer: UILayer) -> void:

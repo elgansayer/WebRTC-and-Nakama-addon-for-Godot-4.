@@ -44,22 +44,23 @@ func _on_TitleScreen_play_online() -> void:
 	ui_layer.show_screen("ConnectionScreen")
 
 func _on_UILayer_change_screen(name: String, _screen) -> void:
-	if name == 'TitleScreen':
-		ui_layer.hide_back_button()
-	else:
-		ui_layer.show_back_button()
+	pass
+#	if name == 'TitleScreen':
+#		ui_layer.hide_back_button()
+#	else:
+#		ui_layer.show_back_button()
 
 func _on_UILayer_back_button() -> void:
 	ui_layer.hide_message()
 	
 	stop_game()
 	
-	if ui_layer.current_screen_name in ['ConnectionScreen', 'MatchScreen']:
-		ui_layer.show_screen("TitleScreen")
-	elif not GameState.online_play:
-		ui_layer.show_screen("TitleScreen")
-	else:
-		ui_layer.show_screen("MatchScreen")
+	#if ui_layer.current_screen_name in ['ConnectionScreen', 'MatchScreen']:
+	#	ui_layer.show_screen("TitleScreen")
+	#elif not GameState.online_play:
+	#	ui_layer.show_screen("TitleScreen")
+	#else:
+	#	ui_layer.show_screen("MatchScreen")
 
 func _on_ReadyScreen_ready_pressed() -> void:
 	rpc("player_ready", OnlineMatch.get_my_session_id())
@@ -132,8 +133,7 @@ func restart_game() -> void:
 
 func _on_Game_game_started() -> void:
 	ui_layer.hide_screen()
-	ui_layer.hide_all()
-	ui_layer.show_back_button()
+	ui_layer.hide_message()
 
 func _on_Game_player_dead(player_id: int) -> void:
 	if GameState.online_play:
