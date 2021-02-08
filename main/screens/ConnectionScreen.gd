@@ -10,6 +10,7 @@ var email: String = ''
 var password: String = ''
 
 var _reconnect: bool = false
+var _next_screen: String
 
 func _ready() -> void:
 	var file = File.new()
@@ -35,6 +36,7 @@ func _save_credentials() -> void:
 
 func _show_screen(info: Dictionary = {}) -> void:
 	_reconnect = info.get('reconnect', false)
+	_next_screen = info.get('next_screen', 'MatchScreen')
 	
 	tab_container.current_tab = 0
 	
@@ -70,8 +72,8 @@ func do_login(save_credentials: bool = false) -> void:
 		Online.nakama_session = nakama_session
 		ui_layer.hide_message()
 		
-		if not _reconnect:
-			ui_layer.show_screen("MatchScreen")
+		if _next_screen:
+			ui_layer.show_screen(_next_screen)
 
 func _on_LoginButton_pressed() -> void:
 	email = login_email_field.text.strip_edges()
