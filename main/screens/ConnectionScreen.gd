@@ -10,7 +10,7 @@ var email: String = ''
 var password: String = ''
 
 var _reconnect: bool = false
-var _next_screen: String
+var _next_screen
 
 func _ready() -> void:
 	var file = File.new()
