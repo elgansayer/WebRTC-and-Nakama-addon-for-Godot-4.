@@ -19,7 +19,7 @@ func _show_screen(_info: Dictionary = {}) -> void:
 func _on_match_button_pressed(mode) -> void:
 	# If our session has expired, show the ConnectionScreen again.
 	if Online.nakama_session == null or Online.nakama_session.is_expired():
-		ui_layer.show_screen("ConnectionScreen", { reconnect = true })
+		ui_layer.show_screen("ConnectionScreen", { next_screen = null, reconnect = true })
 		
 		# Wait to see if we get a new valid session.
 		yield(Online, "session_changed")
