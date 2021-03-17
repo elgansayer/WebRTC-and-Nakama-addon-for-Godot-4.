@@ -37,19 +37,22 @@ remotesync func _do_game_setup(players: Dictionary) -> void:
 	
 	reload_map()
 	
-	for player_id in players:
+	var player_index := 1
+	for peer_id in players:
 		var other_player = Player.instance()
-		other_player.name = str(player_id)
+		other_player.name = str(peer_id)
 		players_node.add_child(other_player)
 		
-		other_player.set_network_master(player_id)
-		other_player.set_player_name(players[player_id])
-		other_player.position = map.get_node("PlayerStartPositions/Player" + str(player_id)).position
-		other_player.connect("player_dead", self, "_on_player_dead", [player_id])
+		other_player.set_network_master(peer_id)
+		other_player.set_player_name(players[peer_id])
+		other_player.position = map.get_node("PlayerStartPositions/Player" + str(player_index)).position
+		other_player.connect("player_dead", self, "_on_player_dead", [peer_id])
 		
 		if not GameState.online_play:
 			other_player.player_controlled = true
-			other_player.input_prefix = "player" + str(player_id) + "_"
+			other_player.input_prefix = "player" + str(player_index) + "_"
+		
+		player_index += 1
 	
 	if GameState.online_play:
 		var my_id := get_tree().get_network_unique_id()
