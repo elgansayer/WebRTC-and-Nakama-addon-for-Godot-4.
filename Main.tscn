@@ -67,6 +67,7 @@ text = "X"
 __meta__ = {
 "_edit_use_anchors_": false
 }
+
 [connection signal="game_over" from="Game" to="." method="_on_Game_game_over"]
 [connection signal="game_started" from="Game" to="." method="_on_Game_game_started"]
 [connection signal="player_dead" from="Game" to="." method="_on_Game_player_dead"]
