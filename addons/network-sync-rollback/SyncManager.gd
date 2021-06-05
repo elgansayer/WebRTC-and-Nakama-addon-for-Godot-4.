@@ -44,6 +44,7 @@ var ping_frequency := 1.0 setget set_ping_frequency
 
 var current_tick: int = 0
 var skip_ticks: int = 0
+var rollback_ticks: int = 0
 var started := false
 
 var ping_timer: Timer
@@ -117,12 +118,51 @@ remotesync func _remote_stop() -> void:
 	input_buffer.clear()
 	state_buffer.clear()
 
+func _call_network_process(delta: float) -> void:
+	var nodes: Array = get_tree().get_nodes_in_group('network_sync')
+	var i = nodes.size()
+	while i > 0:
+		i -= 1
+		var node = nodes[i]
+		if node.has_method('_network_process'):
+			node._network_process(delta, self)
+
+func _call_save_state() -> Dictionary:
+	var state := {}
+	var nodes: Array = get_tree().get_nodes_in_group('network_sync')
+	for node in nodes:
+		if node.has_method('_save_state'):
+			state[str(node.get_path())] = node._save_state()
+	return state
+
+func _call_load_state(state: Dictionary) -> void:
+	for node_path in state:
+		if has_node(node_path):
+			var node = get_node(node_path)
+			if node.has_methode('_load_state'):
+				node._load_state(state[node_path])
+
+func _do_tick(delta: float) -> void:
+	# @todo Predict any missing input
+	_call_network_process(delta)
+	state_buffer.append(_call_save_state())
+
 func _physics_process(delta: float) -> void:
 	if not started:
 		return
 	
-	# @todo Check if we're marked to rollback to a specific tick, then do the
-	#       rollback and roll forward.
+	if rollback_ticks > 0:
+		# Rollback our internal state.
+		_call_load_state(state_buffer[-rollback_ticks - 1])
+		state_buffer.resize(state_buffer.size() - rollback_ticks)
+		input_buffer.resize(input_buffer.size() - rollback_ticks)
+		current_tick -= rollback_ticks
+		
+		# Iterate forward until we're at the same spot we left off.
+		while rollback_ticks < 0:
+			_do_tick(delta)
+			rollback_ticks -= 1
+			current_tick += 1
 	
 	if skip_ticks > 0:
 		skip_ticks -= 1
@@ -161,10 +201,7 @@ func _physics_process(delta: float) -> void:
 		#       of input back to the peer.next_local_tick_requested
 		rpc_id(peer_id, "receive_tick", msg)
 	
-	# @todo Predict remote input
-	# @todo Loop over children of our parent and call _network_process()
-	# @todo Loop over children of our parent and call _save_network_state() and
-	#       store that in the state_buffer.
+	_do_tick(delta)
 
 remote func receive_tick(msg: Dictionary) -> void:
 	if not started:
