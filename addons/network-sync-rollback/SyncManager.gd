@@ -125,6 +125,7 @@ func _call_network_process(delta: float) -> void:
 		i -= 1
 		var node = nodes[i]
 		if node.has_method('_network_process'):
+			# @todo should we be passing in the input frame instead?
 			node._network_process(delta, self)
 
 func _call_save_state() -> Dictionary:
