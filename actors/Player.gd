@@ -22,12 +22,9 @@ func attack() -> void:
 			body.hurt()
 
 func hurt() -> void:
-	if not GameState.online_play:
-		die()
-	elif is_network_master():
-		rpc("die")
+	die()
 
-remotesync func die() -> void:
+func die() -> void:
 	# Add what you want to happen in your game when a player dies.
 	queue_free()
 	emit_signal("player_dead")
@@ -41,9 +38,6 @@ func _network_process(delta: float, input_frame, sync_manager) -> void:
 	var is_attacking: bool = not animation_player.is_playing() and input.get('attack_pressed', false)
 	if is_attacking:
 		animation_player.play("Attack")
-	
-	#if GameState.online_play and player_controlled:
-	#	rpc("update_remote_player", global_position, is_attacking)
 
 func _save_state() -> Dictionary:
 	var state = {
@@ -66,19 +60,3 @@ func _load_state(state: Dictionary) -> void:
 		# @todo maybe use .advance() instead? (idea from Thomas Szot)
 		animation_player.seek(state['animation_player_current_position'], true)
 
-# Extremely naive position and animation sync'ing.
-#
-# This will work locally, and under ideal network conditions, but likely won't 
-# be acceptable over the live internet for a large percentage of users.
-#
-# You'll need to replace this with more efficient sync'ing mechanism, which
-# could include input prediction, rollback, limiting how often sync'ing happens
-# or any other number of techniques.
-#
-# In addition to that, you'll also need to expand the number of things that are
-# sync'd, depending on the needs of your game.
-puppet func update_remote_player(_position: Vector2, is_attacking: bool) -> void:
-	global_position = _position
-	
-	if is_attacking and not animation_player.is_playing():
-		animation_player.play("Attack")
