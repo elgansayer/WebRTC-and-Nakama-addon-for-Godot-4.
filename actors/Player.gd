@@ -32,7 +32,7 @@ remotesync func die() -> void:
 	queue_free()
 	emit_signal("player_dead")
 
-func _physics_process(delta: float) -> void:
+func _network_process(delta: float, sync_manager) -> void:
 	if player_controlled:
 		var vector = Vector2(
 			Input.get_action_strength(input_prefix + "right") - Input.get_action_strength(input_prefix + "left"),
@@ -46,6 +46,22 @@ func _physics_process(delta: float) -> void:
 		
 		if GameState.online_play:
 			rpc("update_remote_player", global_position, is_attacking)
+
+func _save_state() -> Dictionary:
+	return {
+		position = position,
+		animation_player_is_playing = animation_player.is_playing(),
+		animation_player_current_animation = animation_player.current_animation,
+		animation_player_current_position = animation_player.current_animation_position,
+	}
+
+func _load_state(state: Dictionary) -> void:
+	position = state['position']
+	animation_player.stop()
+	if state['animation_player_is_playing']:
+		animation_player.play(state['animation_player_current_animation'])
+		# @todo maybe use .advance() instead? (idea from Thomas Szot)
+		animation_player.seek(state['animation_player_current_position'], true)
 
 # Extremely naive position and animation sync'ing.
 #

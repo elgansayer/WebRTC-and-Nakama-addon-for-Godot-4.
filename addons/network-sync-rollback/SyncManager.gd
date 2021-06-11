@@ -1,4 +1,5 @@
 extends Node
+class_name SyncManager
 
 class Peer extends Reference:
 	var peer_id: int
@@ -146,7 +147,11 @@ func _call_load_state(state: Dictionary) -> void:
 func _do_tick(delta: float) -> void:
 	# @todo Predict any missing input
 	_call_network_process(delta)
-	state_buffer.append(_call_save_state())
+	var new_state = _call_save_state()
+	#print (new_state)
+	state_buffer.append(new_state)
+	while state_buffer.size() > max_state_count:
+		state_buffer.pop_front()
 
 func _physics_process(delta: float) -> void:
 	if not started:
@@ -156,6 +161,7 @@ func _physics_process(delta: float) -> void:
 		# Rollback our internal state.
 		_call_load_state(state_buffer[-rollback_ticks - 1])
 		state_buffer.resize(state_buffer.size() - rollback_ticks)
+		# @todo: Do we really want to remove the future input?
 		input_buffer.resize(input_buffer.size() - rollback_ticks)
 		current_tick -= rollback_ticks
 		

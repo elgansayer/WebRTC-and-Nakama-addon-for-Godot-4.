@@ -8,6 +8,7 @@ onready var map: Node2D = $Map
 onready var players_node := $Players
 onready var camera := $Camera2D
 onready var original_camera_position: Vector2 = camera.global_position
+onready var sync_manager = $SyncManager
 
 var game_started := false
 var game_over := false
@@ -77,6 +78,7 @@ remotesync func _do_game_start() -> void:
 		map.map_start()
 	emit_signal("game_started")
 	get_tree().set_pause(false)
+	sync_manager.start()
 
 func game_stop() -> void:
 	if map.has_method('map_stop'):
