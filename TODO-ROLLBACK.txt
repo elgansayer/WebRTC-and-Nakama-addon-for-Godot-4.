@@ -4,4 +4,5 @@ TODO
  - Inject input from remote peer into the input buffer and do rollback if necessary
  - Somehow get (and predict) input on nodes that actually use it, maybe via _get_network_input() and _predict_network_input() methods?
  - Log the game state from each peer so we can compare it after each run is finished
+ - Add some error signal to SyncManager so we can handle catastrophic failures
 

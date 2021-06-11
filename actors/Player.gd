@@ -42,8 +42,8 @@ func _network_process(delta: float, input_frame, sync_manager) -> void:
 	if is_attacking:
 		animation_player.play("Attack")
 	
-	if GameState.online_play and player_controlled:
-		rpc("update_remote_player", global_position, is_attacking)
+	#if GameState.online_play and player_controlled:
+	#	rpc("update_remote_player", global_position, is_attacking)
 
 func _save_state() -> Dictionary:
 	var state = {

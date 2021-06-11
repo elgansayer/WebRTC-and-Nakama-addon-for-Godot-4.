@@ -90,7 +90,7 @@ func set_ping_frequency(_ping_frequency) -> void:
 		ping_timer.wait_time = _ping_frequency
 
 func add_peer(peer_id: int) -> void:
-	assert(not peers.has(peer_id))
+	assert(not peers.has(peer_id), "Peer with given id already exists")
 	
 	if peers.has(peer_id):
 		return
@@ -118,7 +118,7 @@ remote func _remote_ping_back(msg: Dictionary) -> void:
 	emit_signal("peer_pinged_back", peer)
 
 func start() -> void:
-	assert(get_tree().is_network_server())
+	assert(get_tree().is_network_server(), "start() should only be called on the host")
 	if get_tree().is_network_server():
 		# @todo Use latency information to time when we do our local start.
 		rpc("_remote_start")
@@ -163,7 +163,7 @@ func _call_load_state(state: Dictionary) -> void:
 	for node_path in state:
 		if has_node(node_path):
 			var node = get_node(node_path)
-			if node.has_methode('_load_state'):
+			if node.has_method('_load_state'):
 				node._load_state(state[node_path])
 
 func _do_tick(delta: float) -> void:
@@ -195,20 +195,23 @@ func _physics_process(delta: float) -> void:
 		return
 	
 	if rollback_ticks > 0:
+		var original_tick = current_tick
+		var original_input_index = current_input_index
+		
 		# Rollback our internal state.
 		_call_load_state(state_buffer[-rollback_ticks - 1])
 		state_buffer.resize(state_buffer.size() - rollback_ticks)
-		# @todo: Do we really want to remove the future input?
-		#input_buffer.resize(input_buffer.size() - rollback_ticks)
 		current_tick -= rollback_ticks
-		current_input_index = -1 - rollback_ticks
+		current_input_index = -rollback_ticks - 1
 		
 		# Iterate forward until we're at the same spot we left off.
-		#while rollback_ticks < 0:
-		#	_do_tick(delta)
-		#	rollback_ticks -= 1
-		#	current_tick += 1
-		#   current_input_index += 1
+		while rollback_ticks > 0:
+			_do_tick(delta)
+			rollback_ticks -= 1
+			current_tick += 1
+			current_input_index += 1
+		assert(current_tick == original_tick, "Rollback didn't return to the original tick")
+		assert(current_input_index == original_input_index, "Rollback didn't return to the original input buffer index")
 	
 	if skip_ticks > 0:
 		skip_ticks -= 1
@@ -243,7 +246,6 @@ func _physics_process(delta: float) -> void:
 			next_tick_requested = peer.last_remote_tick_received + 1,
 			input = local_input,
 		}
-		# @todo Put local input into message
 		# @todo Convert this to rpc_unreliable_id() by including multiple sets
 		#       of input back to the peer.next_local_tick_requested
 		rpc_id(peer_id, "receive_tick", msg)
@@ -272,6 +274,25 @@ remote func receive_tick(msg: Dictionary) -> void:
 	# Number of frames the remote is predicting for us.
 	peer.remote_lag = (peer.last_remote_tick_received + 1) - peer.next_local_tick_requested
 	
-	# @todo Integrate remote input into input buffer
-	# @todo Check each subsequent prediction, and if it doesn't match, mark a
-	#       rollback to that tick.
+	#
+	# Integrate the input we received into the input buffer.
+	#
+	
+	var tick_delta = current_tick - msg['tick']
+	assert(tick_delta >= 0, "Tick on message is ahead of our input buffer")
+	var input_frame = input_buffer[-tick_delta - 1]
+	assert(input_frame.tick == msg['tick'], "Tick on message doesn't match tick on relative input buffer frame")
+	
+	# Check if input matches what we had predicted, if not, inject it and then
+	# flag that we need to rollback.
+	var input = msg['input']
+	if input_frame.players[peer_id].input != input:
+		input_frame.players[peer_id] = InputForPlayer.new(input, false)
+		# If we already flagged a rollback even further back, then we're good,
+		# we don't want to inadvertedly shorten the rollback.
+		if tick_delta > rollback_ticks:
+			rollback_ticks = tick_delta
+			print ("Flagging a rollback of %s ticks" % rollback_ticks)
+	else:
+		# We predicted right, so just mark the input as correct!
+		input_frame.players[peer_id].predicted = false
