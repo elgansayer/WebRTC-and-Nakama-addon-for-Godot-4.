@@ -52,6 +52,9 @@ remotesync func _do_game_setup(players: Dictionary) -> void:
 		if not GameState.online_play:
 			other_player.player_controlled = true
 			other_player.input_prefix = "player" + str(player_index) + "_"
+		else:
+			if peer_id != get_tree().get_network_unique_id():
+				sync_manager.add_peer(peer_id)
 		
 		player_index += 1
 	
@@ -71,6 +74,7 @@ mastersync func _finished_game_setup(player_id: int) -> void:
 	if players_setup.size() == players_alive.size():
 		# Once all clients have finished setup, tell them to start the game.
 		rpc("_do_game_start")
+		sync_manager.start()
 
 # Actually start the game on this client.
 remotesync func _do_game_start() -> void:
@@ -78,7 +82,6 @@ remotesync func _do_game_start() -> void:
 		map.map_start()
 	emit_signal("game_started")
 	get_tree().set_pause(false)
-	sync_manager.start()
 
 func game_stop() -> void:
 	if map.has_method('map_stop'):

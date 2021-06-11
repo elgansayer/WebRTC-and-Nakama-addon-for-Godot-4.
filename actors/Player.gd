@@ -32,28 +32,31 @@ remotesync func die() -> void:
 	queue_free()
 	emit_signal("player_dead")
 
-func _network_process(delta: float, sync_manager) -> void:
-	if player_controlled:
-		var vector = Vector2(
-			Input.get_action_strength(input_prefix + "right") - Input.get_action_strength(input_prefix + "left"),
-			Input.get_action_strength(input_prefix + "down") - Input.get_action_strength(input_prefix + "up")).normalized()
-		vector *= (speed * delta)
-		move_and_collide(vector)
-		
-		var is_attacking: bool = not animation_player.is_playing() and Input.is_action_just_pressed(input_prefix + "attack")
-		if is_attacking:
-			animation_player.play("Attack")
-		
-		if GameState.online_play:
-			rpc("update_remote_player", global_position, is_attacking)
+func _network_process(delta: float, input_frame, sync_manager) -> void:
+	var input = input_frame.players[get_network_master()].input
+	var vector = input.get('input_vector', Vector2.ZERO)
+	vector *= (speed * delta)
+	move_and_collide(vector)
+	
+	var is_attacking: bool = not animation_player.is_playing() and input.get('attack_pressed', false)
+	if is_attacking:
+		animation_player.play("Attack")
+	
+	if GameState.online_play and player_controlled:
+		rpc("update_remote_player", global_position, is_attacking)
 
 func _save_state() -> Dictionary:
-	return {
+	var state = {
 		position = position,
-		animation_player_is_playing = animation_player.is_playing(),
-		animation_player_current_animation = animation_player.current_animation,
-		animation_player_current_position = animation_player.current_animation_position,
+		animation_player_is_playing = false,
+		animation_player_current_animation = '',
+		animation_player_current_position = 0.0,
 	}
+	if animation_player.is_playing():
+		state['animation_player_is_playing'] = true
+		state['animation_player_current_animation'] = animation_player.current_animation
+		state['animation_player_current_position'] = animation_player.current_animation_position
+	return state
 
 func _load_state(state: Dictionary) -> void:
 	position = state['position']
