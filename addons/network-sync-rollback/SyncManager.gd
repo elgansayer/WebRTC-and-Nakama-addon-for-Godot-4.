@@ -42,7 +42,11 @@ class InputForPlayer:
 		predicted = _predicted
 
 class InputBufferFrame:
+	var tick: int
 	var players := {}
+	
+	func _init(_tick: int) -> void:
+		tick = _tick
 	
 	func is_complete(peers: Dictionary) -> bool:
 		for peer_id in peers:
@@ -244,7 +248,7 @@ func _physics_process(delta: float) -> void:
 		#       of input back to the peer.next_local_tick_requested
 		rpc_id(peer_id, "receive_tick", msg)
 	
-	var input_frame = InputBufferFrame.new()
+	var input_frame = InputBufferFrame.new(current_tick)
 	input_frame.players[get_tree().get_network_unique_id()] = InputForPlayer.new(local_input, false)
 	input_buffer.append(input_frame)
 	while input_buffer.size() > max_state_count:
