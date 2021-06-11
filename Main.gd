@@ -81,6 +81,7 @@ func _on_OnlineMatch_player_left(player) -> void:
 	ui_layer.show_message(player.username + " has left")
 	
 	game.kill_player(player.peer_id)
+	game.sync_manager.remove_peer(player.peer_id)
 	
 	players.erase(player.peer_id)
 	players_ready.erase(player.peer_id)

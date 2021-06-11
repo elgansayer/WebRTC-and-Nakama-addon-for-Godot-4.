@@ -6,9 +6,6 @@ func _gather_local_input(player_index: int) -> Dictionary:
 			Input.get_action_strength(input_prefix + "right") - Input.get_action_strength(input_prefix + "left"),
 			Input.get_action_strength(input_prefix + "down") - Input.get_action_strength(input_prefix + "up")).normalized()
 	
-	if input_vector != Vector2.ZERO:
-		print(input_vector)
-	
 	return {
 		input_vector = input_vector,
 		attack_pressed = Input.is_action_just_pressed(input_prefix + "attack"),

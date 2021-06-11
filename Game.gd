@@ -53,7 +53,7 @@ remotesync func _do_game_setup(players: Dictionary) -> void:
 			other_player.player_controlled = true
 			other_player.input_prefix = "player" + str(player_index) + "_"
 		else:
-			if peer_id != get_tree().get_network_unique_id():
+			if peer_id != get_tree().get_network_unique_id() and not sync_manager.has_peer(peer_id):
 				sync_manager.add_peer(peer_id)
 		
 		player_index += 1

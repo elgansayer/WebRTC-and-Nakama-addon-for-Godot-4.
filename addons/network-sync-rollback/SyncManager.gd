@@ -65,7 +65,6 @@ var ticks_to_calculate_advantage := 60
 var ping_frequency := 1.0 setget set_ping_frequency
 
 var current_tick: int = 0
-var current_input_index: int = -1
 var skip_ticks: int = 0
 var rollback_ticks: int = 0
 var started := false
@@ -95,6 +94,12 @@ func add_peer(peer_id: int) -> void:
 	if peers.has(peer_id):
 		return
 	peers[peer_id] = Peer.new(peer_id)
+
+func has_peer(peer_id: int) -> bool:
+	return peers.has(peer_id)
+
+func remove_peer(peer_id: int) -> void:
+	peers.erase(peer_id)
 
 func _on_ping_timer_timeout() -> void:
 	var system_time = OS.get_system_time_msecs()
@@ -167,9 +172,8 @@ func _call_load_state(state: Dictionary) -> void:
 				node._load_state(state[node_path])
 
 func _do_tick(delta: float) -> void:
-	var input_frame = input_buffer[current_input_index]
-	var previous_input_index = current_input_index - 1
-	var previous_frame = input_buffer[previous_input_index] if abs(previous_input_index) <= input_buffer.size() else null
+	var input_frame := _get_input_frame(current_tick)
+	var previous_frame := _get_input_frame(current_tick - 1)
 	for peer_id in peers:
 		if not input_frame.players.has(peer_id) or input_frame.players[peer_id].predicted:
 			var predicted_input := {}
@@ -190,28 +194,52 @@ func _gather_local_input(player_index: int) -> Dictionary:
 func _predict_input(previous_input: Dictionary) -> Dictionary:
 	return previous_input.duplicate()
 
+func _get_input_frame(tick: int) -> InputBufferFrame:
+	var input_frame: InputBufferFrame
+	if input_buffer.size() == 0:
+		input_frame = InputBufferFrame.new(tick)
+		input_buffer.append(input_frame)
+	elif input_buffer[-1].tick < tick:
+		var highest = input_buffer[-1].tick
+		while highest < tick:
+			highest += 1
+			input_frame = InputBufferFrame.new(highest)
+			input_buffer.append(input_frame)
+	else:
+		for i in range(input_buffer.size() - 1, -1, -1):
+			if input_buffer[i].tick == tick:
+				input_frame = input_buffer[i]
+	return input_frame
+
 func _physics_process(delta: float) -> void:
 	if not started:
 		return
 	
+	if current_tick == 0:
+		# Store an initial state before any ticks.
+		state_buffer.append(_call_save_state())
+	
 	if rollback_ticks > 0:
 		var original_tick = current_tick
-		var original_input_index = current_input_index
 		
 		# Rollback our internal state.
+		assert(rollback_ticks + 1 <= state_buffer.size(), "Not enough state in buffer to rollback requested number of frames")
+		if rollback_ticks + 1 > state_buffer.size():
+			# @todo Report error in some organized way!
+			push_error("Not enough state in buffer to rollback %s frame" % rollback_ticks)
+			stop()
+			return
+		
 		_call_load_state(state_buffer[-rollback_ticks - 1])
 		state_buffer.resize(state_buffer.size() - rollback_ticks)
 		current_tick -= rollback_ticks
-		current_input_index = -rollback_ticks - 1
 		
 		# Iterate forward until we're at the same spot we left off.
 		while rollback_ticks > 0:
+			current_tick += 1
 			_do_tick(delta)
 			rollback_ticks -= 1
-			current_tick += 1
-			current_input_index += 1
 		assert(current_tick == original_tick, "Rollback didn't return to the original tick")
-		assert(current_input_index == original_input_index, "Rollback didn't return to the original input buffer index")
 	
 	if skip_ticks > 0:
 		skip_ticks -= 1
@@ -250,16 +278,17 @@ func _physics_process(delta: float) -> void:
 		#       of input back to the peer.next_local_tick_requested
 		rpc_id(peer_id, "receive_tick", msg)
 	
-	var input_frame = InputBufferFrame.new(current_tick)
+	var input_frame := _get_input_frame(current_tick)
+	assert(input_frame != null, "Current input frame is null")
 	input_frame.players[get_tree().get_network_unique_id()] = InputForPlayer.new(local_input, false)
-	input_buffer.append(input_frame)
 	while input_buffer.size() > max_state_count:
 		var retired_input_frame = input_buffer.pop_front()
-		#if not retired_input_frame.is_complete(peers):
-		#	# @todo Yell loudly that things are broken!
-		#	stop()
-		#	return
-			
+		if not retired_input_frame.is_complete(peers):
+			push_error("Retired an incomplete input frame")
+			# @todo Yell loudly that things are broken!
+			stop()
+			return
+	
 	_do_tick(delta)
 
 remote func receive_tick(msg: Dictionary) -> void:
@@ -278,21 +307,28 @@ remote func receive_tick(msg: Dictionary) -> void:
 	# Integrate the input we received into the input buffer.
 	#
 	
+	var input: Dictionary = msg['input']
+	var input_frame := _get_input_frame(msg['tick'])
 	var tick_delta = current_tick - msg['tick']
-	assert(tick_delta >= 0, "Tick on message is ahead of our input buffer")
-	var input_frame = input_buffer[-tick_delta - 1]
-	assert(input_frame.tick == msg['tick'], "Tick on message doesn't match tick on relative input buffer frame")
 	
-	# Check if input matches what we had predicted, if not, inject it and then
-	# flag that we need to rollback.
-	var input = msg['input']
-	if input_frame.players[peer_id].input != input:
-		input_frame.players[peer_id] = InputForPlayer.new(input, false)
-		# If we already flagged a rollback even further back, then we're good,
-		# we don't want to inadvertedly shorten the rollback.
-		if tick_delta > rollback_ticks:
-			rollback_ticks = tick_delta
-			print ("Flagging a rollback of %s ticks" % rollback_ticks)
+	# If we received a tick in the past...
+	if tick_delta >= 0:
+		# Check if input matches what we had predicted, if not, inject it and then
+		# flag that we need to rollback.	
+		if input_frame.players[peer_id].input.hash() != input.hash():
+			print ("Received input: %s" % input)
+			print ("Predicted input: %s" % input_frame.players[peer_id].input)
+			print ("-----")
+			input_frame.players[peer_id] = InputForPlayer.new(input, false)
+			# If we already flagged a rollback even further back, then we're good,
+			# we don't want to inadvertedly shorten the rollback.
+			if tick_delta + 1 > rollback_ticks:
+				rollback_ticks = tick_delta + 1
+				print ("Flagging a rollback of %s ticks" % rollback_ticks)
+		else:
+			# We predicted right, so just mark the input as correct!
+			input_frame.players[peer_id].predicted = false
+	# If we received a tick in the future...
 	else:
-		# We predicted right, so just mark the input as correct!
-		input_frame.players[peer_id].predicted = false
+		# So, we just store this input for when we get to it.
+		input_frame.players[peer_id] = InputForPlayer.new(input, false)
