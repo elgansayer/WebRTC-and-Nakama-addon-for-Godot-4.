@@ -99,4 +99,6 @@ collision_mask = 2
 shape = SubResource( 3 )
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+playback_process_mode = 2
+method_call_mode = 1
 anims/Attack = SubResource( 4 )

@@ -61,6 +61,7 @@ var state_buffer := []
 var max_state_count := 20
 var ticks_to_calculate_advantage := 60
 var input_delay := 2
+var rollback_debug_ticks := 0
 
 # In seconds, because we don't want it to be dependent on the network tick.
 var ping_frequency := 1.0 setget set_ping_frequency
@@ -228,6 +229,9 @@ func _physics_process(delta: float) -> void:
 	if current_tick == 0:
 		# Store an initial state before any ticks.
 		state_buffer.append(_call_save_state())
+	
+	if rollback_debug_ticks > 0 and render_tick >= rollback_debug_ticks:
+		rollback_ticks = max(rollback_ticks, rollback_debug_ticks)
 	
 	if rollback_ticks > 0:
 		var original_tick = render_tick
