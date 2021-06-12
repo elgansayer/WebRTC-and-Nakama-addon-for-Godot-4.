@@ -1,8 +1,6 @@
 TODO
 ====
 
- - Somehow get (and predict) input on nodes that actually use it, maybe via _get_network_input() and _predict_network_input() methods?
- - Don't store values on input if they are at their default values (smaller input dictionaries to pass over the network)
  - Log the game state from each peer so we can compare it after each run is finished
  - Add some error signal to SyncManager so we can handle catastrophic failures
  - Attempt to use rpc_unreliable() instead of plain rpc() for the tick messages

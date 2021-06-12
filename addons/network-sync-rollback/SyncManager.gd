@@ -48,6 +48,11 @@ class InputBufferFrame:
 	func _init(_tick: int) -> void:
 		tick = _tick
 	
+	func get_player_input(peer_id: int) -> Dictionary:
+		if players.has(peer_id):
+			return players[peer_id].input
+		return {}
+	
 	func is_complete(peers: Dictionary) -> bool:
 		for peer_id in peers:
 			if not players.has(peer_id) or players[peer_id].predicted:
@@ -157,6 +162,31 @@ remotesync func _remote_stop() -> void:
 	input_buffer.clear()
 	state_buffer.clear()
 
+func _call_get_local_input() -> Dictionary:
+	var input := {}
+	var nodes: Array = get_tree().get_nodes_in_group('network_sync')
+	for node in nodes:
+		if node.is_network_master() and node.has_method('_get_local_input'):
+			var node_input = node._get_local_input()
+			if node_input.size() > 0:
+				input[str(node.get_path())] = node_input
+	return input
+
+func _call_predict_network_input(previous_input: Dictionary) -> Dictionary:
+	var input := {}
+	var nodes: Array = get_tree().get_nodes_in_group('network_sync')
+	for node in nodes:
+		if node.is_network_master():
+			continue
+		
+		var node_path_str := str(node.get_path())
+		var has_predict_network_input: bool = node.has_method('_predict_network_input')
+		if has_predict_network_input or previous_input.has(node_path_str):
+			var previous_input_for_node = previous_input.get(node_path_str, {})
+			input[node_path_str] = node._predict_network_input(previous_input_for_node) if has_predict_network_input else previous_input_for_node.duplicate()
+	
+	return input
+
 func _call_network_process(delta: float, input_frame: InputBufferFrame) -> void:
 	var nodes: Array = get_tree().get_nodes_in_group('network_sync')
 	var i = nodes.size()
@@ -164,8 +194,8 @@ func _call_network_process(delta: float, input_frame: InputBufferFrame) -> void:
 		i -= 1
 		var node = nodes[i]
 		if node.has_method('_network_process'):
-			# @todo should we be passing in the input frame instead?
-			node._network_process(delta, input_frame, self)
+			var player_input = input_frame.get_player_input(node.get_network_master())
+			node._network_process(delta, player_input.get(str(node.get_path()), {}), self)
 
 func _call_save_state() -> Dictionary:
 	var state := {}
@@ -185,25 +215,19 @@ func _call_load_state(state: Dictionary) -> void:
 func _do_tick(delta: float) -> void:
 	var input_frame := _get_input_frame(render_tick)
 	var previous_frame := _get_input_frame(render_tick - 1)
+	
 	for peer_id in peers:
 		if not input_frame.players.has(peer_id) or input_frame.players[peer_id].predicted:
 			var predicted_input := {}
 			if previous_frame:
-				predicted_input = _predict_input(previous_frame.players[peer_id].input)
+				predicted_input = _call_predict_network_input(previous_frame.get_player_input(peer_id))
 			input_frame.players[peer_id] = InputForPlayer.new(predicted_input, true)
 	
 	_call_network_process(delta, input_frame)
-	var new_state = _call_save_state()
-	#print (new_state)
-	state_buffer.append(new_state)
+	
+	state_buffer.append(_call_save_state())
 	while state_buffer.size() > max_state_count:
 		state_buffer.pop_front()
-
-func _gather_local_input(player_index: int) -> Dictionary:
-	return {}
-
-func _predict_input(previous_input: Dictionary) -> Dictionary:
-	return previous_input.duplicate()
 
 func _get_input_frame(tick: int) -> InputBufferFrame:
 	var input_frame: InputBufferFrame
@@ -280,7 +304,7 @@ func _physics_process(delta: float) -> void:
 	current_tick += 1
 	render_tick += 1
 	
-	var local_input = _gather_local_input(1)
+	var local_input = _call_get_local_input()
 	
 	for peer_id in peers:
 		var peer = peers[peer_id]
@@ -331,9 +355,9 @@ remote func receive_tick(msg: Dictionary) -> void:
 	if tick_delta >= 0:
 		# Check if input matches what we had predicted, if not, inject it and then
 		# flag that we need to rollback.	
-		if input_frame.players[peer_id].input.hash() != input.hash():
+		if input_frame.get_player_input(peer_id).hash() != input.hash():
 			print ("Received input: %s" % input)
-			print ("Predicted input: %s" % input_frame.players[peer_id].input)
+			print ("Predicted input: %s" % input_frame.get_player_input(peer_id))
 			print ("-----")
 			input_frame.players[peer_id] = InputForPlayer.new(input, false)
 			# If we already flagged a rollback even further back, then we're good,

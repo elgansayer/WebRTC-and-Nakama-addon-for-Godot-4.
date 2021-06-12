@@ -29,14 +29,29 @@ func die() -> void:
 	queue_free()
 	emit_signal("player_dead")
 
-func _network_process(delta: float, input_frame, sync_manager) -> void:
+func _get_local_input() -> Dictionary:
+	var input := {}
+	
+	var input_vector = Vector2(
+		Input.get_action_strength(input_prefix + "right") - Input.get_action_strength(input_prefix + "left"),
+		Input.get_action_strength(input_prefix + "down") - Input.get_action_strength(input_prefix + "up")).normalized()
+	if input_vector != Vector2.ZERO:
+		input['input_vector'] = input_vector
+	
+	if Input.is_action_just_pressed(input_prefix + "attack"):
+		input['attack_pressed'] = true
+	
+	return input
+
+func _predict_network_input(previous_input: Dictionary) -> Dictionary:
+	var predicted = previous_input.duplicate()
+	predicted.erase('attack_pressed')
+	return predicted
+
+func _network_process(delta: float, input: Dictionary, sync_manager) -> void:
 	if animation_player.is_playing():
 		animation_player.advance(delta)
 	
-	if not input_frame.players.has(get_network_master()):
-		return
-	
-	var input = input_frame.players[get_network_master()].input
 	var vector = input.get('input_vector', Vector2.ZERO)
 	vector *= (speed * delta)
 	move_and_collide(vector)
