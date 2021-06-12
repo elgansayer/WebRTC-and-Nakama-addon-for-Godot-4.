@@ -89,7 +89,7 @@ var started := false setget _set_readonly_variable
 var _ping_timer: Timer
 var _input_buffer_start_tick: int
 var _state_buffer_start_tick: int
-var _state_logged_tick: int
+var _logged_remote_state: Dictionary
 
 signal sync_started ()
 signal sync_stopped ()
@@ -165,6 +165,7 @@ remotesync func _remote_start() -> void:
 	state_buffer.clear()
 	_input_buffer_start_tick = 1
 	_state_buffer_start_tick = 0
+	_logged_remote_state.clear()
 	started = true
 	emit_signal("sync_started")
 
@@ -185,6 +186,7 @@ remotesync func _remote_stop() -> void:
 	state_buffer.clear()
 	_input_buffer_start_tick = 0
 	_state_buffer_start_tick = 0
+	_logged_remote_state.clear()
 
 func _call_get_local_input() -> Dictionary:
 	var input := {}
@@ -319,6 +321,10 @@ func _get_state_frame(tick: int) -> StateBufferFrame:
 	return state_frame
 
 func is_player_input_complete(tick: int) -> bool:
+	if tick > input_buffer[-1].tick:
+		# We don't have any input for this tick.
+		return false
+	
 	var input_frame = _get_input_frame(tick)
 	if input_frame == null:
 		# This means this frame has already been removed from the buffer, which
@@ -358,6 +364,9 @@ func _physics_process(delta: float) -> void:
 			_do_tick(delta)
 			rollback_ticks -= 1
 		assert(current_tick == original_tick, "Rollback didn't return to the original tick")
+	
+	if get_tree().is_network_server() and _logged_remote_state.size() > 0:
+		_process_logged_remote_state()
 	
 	if skip_ticks > 0:
 		skip_ticks -= 1
@@ -450,15 +459,33 @@ remote func _receive_input_tick(msg: Dictionary) -> void:
 
 master func _log_saved_state(tick: int, remote_data: Dictionary) -> void:
 	var peer_id = get_tree().get_rpc_sender_id()
-	
-	var local_state := _get_state_frame(tick)
-	if local_state == null:
-		print ("State logged by %s for tick %s which we don't have saved" % [peer_id, tick])
-		return
-	
-	var local_data = local_state.data
-	if local_data.hash() != remote_data.hash():
-		print ("On tick %s, remote state from %s doesn't match local state" % [tick, peer_id])
-		print ("Remote data: %s" % remote_data)
-		print ("Local data: %s" % local_data)
+	if not _logged_remote_state.has(peer_id):
+		_logged_remote_state[peer_id] = []
+		
+	# The logged state will be processed once we have complete player input in
+	# the _process_logged_remote_state() and _check_remote_state() methods below.
+	_logged_remote_state[peer_id].append(StateBufferFrame.new(tick, remote_data))
+
+func _process_logged_remote_state() -> void:
+	for peer_id in _logged_remote_state:
+		var remote_state_buffer = _logged_remote_state[peer_id]
+		while remote_state_buffer.size() > 0:
+			var remote_tick = remote_state_buffer[0].tick
+			if not is_player_input_complete(remote_tick):
+				break
+			
+			var local_state = _get_state_frame(remote_tick)
+			if local_state == null:
+				break
+			
+			var remote_state = remote_state_buffer.pop_front()
+			_check_remote_state(peer_id, remote_state, local_state)
+
+func _check_remote_state(peer_id: int, remote_state: StateBufferFrame, local_state: StateBufferFrame) -> void:
+	#print ("checking remote state for tick: %s" % remote_state.tick)
+	if local_state.data.hash() != remote_state.data.hash():
+		print ("On tick %s, remote state from %s doesn't match local state" % [remote_state.tick, peer_id])
+		print ("Remote data: %s" % remote_state.data)
+		print ("Local data: %s" % local_state.data)
 		print ("-----")
+
