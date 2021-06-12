@@ -1,6 +1,9 @@
 TODO
 ====
 
+ - Rename current_tick to input_tick, and render_tick to current_tick
+ - Store tick number along with saved game state (to aid in comparisons)
+ - Add a SyncManager.is_player_input_complete(tick) method
  - Log the game state from each peer so we can compare it after each run is finished
  - Add some error signal to SyncManager so we can handle catastrophic failures
  - Attempt to use rpc_unreliable() instead of plain rpc() for the tick messages
