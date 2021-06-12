@@ -86,6 +86,7 @@ var rollback_ticks: int = 0 setget _set_readonly_variable
 var started := false setget _set_readonly_variable
 
 var _ping_timer: Timer
+var _input_buffer_start_tick: int
 
 signal sync_started ()
 signal sync_stopped ()
@@ -159,6 +160,7 @@ remotesync func _remote_start() -> void:
 	rollback_ticks = 0
 	input_buffer.clear()
 	state_buffer.clear()
+	_input_buffer_start_tick = 1
 	started = true
 	emit_signal("sync_started")
 
@@ -177,6 +179,7 @@ remotesync func _remote_stop() -> void:
 	rollback_ticks = 0
 	input_buffer.clear()
 	state_buffer.clear()
+	_input_buffer_start_tick = 0
 
 func _call_get_local_input() -> Dictionary:
 	var input := {}
@@ -199,7 +202,9 @@ func _call_predict_network_input(previous_input: Dictionary) -> Dictionary:
 		var has_predict_network_input: bool = node.has_method('_predict_network_input')
 		if has_predict_network_input or previous_input.has(node_path_str):
 			var previous_input_for_node = previous_input.get(node_path_str, {})
-			input[node_path_str] = node._predict_network_input(previous_input_for_node) if has_predict_network_input else previous_input_for_node.duplicate()
+			var predicted_input_for_node = node._predict_network_input(previous_input_for_node) if has_predict_network_input else previous_input_for_node.duplicate()
+			if predicted_input_for_node.size() > 0:
+				input[node_path_str] = predicted_input_for_node
 	
 	return input
 
@@ -245,7 +250,7 @@ func _do_tick(delta: float) -> void:
 	while state_buffer.size() > max_state_count:
 		state_buffer.pop_front()
 
-func _get_input_frame(tick: int) -> InputBufferFrame:
+func _get_or_create_input_frame(tick: int) -> InputBufferFrame:
 	var input_frame: InputBufferFrame
 	if input_buffer.size() == 0:
 		input_frame = InputBufferFrame.new(tick)
@@ -257,10 +262,38 @@ func _get_input_frame(tick: int) -> InputBufferFrame:
 			input_frame = InputBufferFrame.new(highest)
 			input_buffer.append(input_frame)
 	else:
-		for i in range(input_buffer.size() - 1, -1, -1):
-			if input_buffer[i].tick == tick:
-				input_frame = input_buffer[i]
+		input_frame = _get_input_frame(tick)
+		if input_frame == null:
+			push_error("Requested input frame not found in buffer")
+			stop()
+			return null
+	
+	# Clean-up old input buffer frames.
+	while input_buffer.size() > max_state_count:
+		_input_buffer_start_tick += 1
+		var retired_input_frame = input_buffer.pop_front()
+		if not retired_input_frame.is_complete(peers):
+			push_error("Retired an incomplete input frame")
+			# @todo Yell loudly that things are broken!
+			stop()
+			return null
+	
 	return input_frame
+
+func _get_input_frame(tick: int) -> InputBufferFrame:
+	if tick < _input_buffer_start_tick:
+		return null
+	var input_frame = input_buffer[tick - _input_buffer_start_tick]
+	assert(input_frame.tick == tick, "Input frame retreived from input buffer has mismatched tick number")
+	return input_frame
+
+func is_player_input_complete(tick: int) -> bool:
+	var input_frame = _get_input_frame(tick)
+	if input_frame == null:
+		# This means this frame has already been removed from the buffer, which
+		# we would never allow if it wasn't complete.
+		return true
+	return input_frame.is_complete(peers)
 
 func _physics_process(delta: float) -> void:
 	if not started:
@@ -333,16 +366,12 @@ func _physics_process(delta: float) -> void:
 		#       of input back to the peer.next_local_tick_requested
 		rpc_id(peer_id, "receive_tick", msg)
 	
-	var input_frame := _get_input_frame(input_tick)
-	assert(input_frame != null, "Current input frame is null")
+	var input_frame := _get_or_create_input_frame(input_tick)
+	if input_frame == null:
+		return
+	
 	input_frame.players[get_tree().get_network_unique_id()] = InputForPlayer.new(local_input, false)
-	while input_buffer.size() > max_state_count:
-		var retired_input_frame = input_buffer.pop_front()
-		if not retired_input_frame.is_complete(peers):
-			push_error("Retired an incomplete input frame")
-			# @todo Yell loudly that things are broken!
-			stop()
-			return
+	
 	
 	if current_tick > 0:
 		_do_tick(delta)
@@ -364,7 +393,7 @@ remote func receive_tick(msg: Dictionary) -> void:
 	#
 	
 	var input: Dictionary = msg['input']
-	var input_frame := _get_input_frame(msg['tick'])
+	var input_frame := _get_or_create_input_frame(msg['tick'])
 	var tick_delta = current_tick - msg['tick']
 	
 	# If we received a tick in the past...
