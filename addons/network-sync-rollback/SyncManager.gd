@@ -75,6 +75,7 @@ var max_state_count := 20
 var ticks_to_calculate_advantage := 60
 var input_delay := 2 setget set_input_delay
 var rollback_debug_ticks := 0
+var log_state := true
 
 # In seconds, because we don't want it to be dependent on the network tick.
 var ping_frequency := 1.0 setget set_ping_frequency
@@ -87,6 +88,8 @@ var started := false setget _set_readonly_variable
 
 var _ping_timer: Timer
 var _input_buffer_start_tick: int
+var _state_buffer_start_tick: int
+var _state_logged_tick: int
 
 signal sync_started ()
 signal sync_stopped ()
@@ -161,6 +164,7 @@ remotesync func _remote_start() -> void:
 	input_buffer.clear()
 	state_buffer.clear()
 	_input_buffer_start_tick = 1
+	_state_buffer_start_tick = 0
 	started = true
 	emit_signal("sync_started")
 
@@ -180,6 +184,7 @@ remotesync func _remote_stop() -> void:
 	input_buffer.clear()
 	state_buffer.clear()
 	_input_buffer_start_tick = 0
+	_state_buffer_start_tick = 0
 
 func _call_get_local_input() -> Dictionary:
 	var input := {}
@@ -233,10 +238,26 @@ func _call_load_state(state: Dictionary) -> void:
 			if node.has_method('_load_state'):
 				node._load_state(state[node_path])
 
+func _save_current_state() -> void:
+	assert(current_tick >= 0, "Attempting to store state for negative tick")
+	if current_tick < 0:
+		return
+	
+	var state_data = _call_save_state()
+	state_buffer.append(StateBufferFrame.new(current_tick, state_data))
+	
+	while state_buffer.size() > max_state_count:
+		state_buffer.pop_front()
+		_state_buffer_start_tick += 1
+	
+	if log_state and not get_tree().is_network_server() and is_player_input_complete(current_tick):
+		rpc_id(1, "_log_saved_state", current_tick, state_data)
+
 func _do_tick(delta: float) -> void:
 	var input_frame := _get_input_frame(current_tick)
 	var previous_frame := _get_input_frame(current_tick - 1)
 	
+	# Predict any missing input.
 	for peer_id in peers:
 		if not input_frame.players.has(peer_id) or input_frame.players[peer_id].predicted:
 			var predicted_input := {}
@@ -245,10 +266,7 @@ func _do_tick(delta: float) -> void:
 			input_frame.players[peer_id] = InputForPlayer.new(predicted_input, true)
 	
 	_call_network_process(delta, input_frame)
-	
-	state_buffer.append(StateBufferFrame.new(current_tick, _call_save_state()))
-	while state_buffer.size() > max_state_count:
-		state_buffer.pop_front()
+	_save_current_state()
 
 func _get_or_create_input_frame(tick: int) -> InputBufferFrame:
 	var input_frame: InputBufferFrame
@@ -283,9 +301,22 @@ func _get_or_create_input_frame(tick: int) -> InputBufferFrame:
 func _get_input_frame(tick: int) -> InputBufferFrame:
 	if tick < _input_buffer_start_tick:
 		return null
-	var input_frame = input_buffer[tick - _input_buffer_start_tick]
+	var index = tick - _input_buffer_start_tick
+	if index >= input_buffer.size():
+		return null
+	var input_frame = input_buffer[index]
 	assert(input_frame.tick == tick, "Input frame retreived from input buffer has mismatched tick number")
 	return input_frame
+
+func _get_state_frame(tick: int) -> StateBufferFrame:
+	if tick < _state_buffer_start_tick:
+		return null
+	var index = tick - _state_buffer_start_tick
+	if index >= state_buffer.size():
+		return null
+	var state_frame = state_buffer[index]
+	assert(state_frame.tick == tick, "State frame retreived from state buffer has mismatched tick number")
+	return state_frame
 
 func is_player_input_complete(tick: int) -> bool:
 	var input_frame = _get_input_frame(tick)
@@ -301,7 +332,7 @@ func _physics_process(delta: float) -> void:
 	
 	if current_tick == 0:
 		# Store an initial state before any ticks.
-		state_buffer.append(StateBufferFrame.new(current_tick, _call_save_state()))
+		_save_current_state()
 	
 	if rollback_debug_ticks > 0 and current_tick >= rollback_debug_ticks:
 		rollback_ticks = max(rollback_ticks, rollback_debug_ticks)
@@ -364,7 +395,7 @@ func _physics_process(delta: float) -> void:
 		}
 		# @todo Convert this to rpc_unreliable_id() by including multiple sets
 		#       of input back to the peer.next_local_tick_requested
-		rpc_id(peer_id, "receive_tick", msg)
+		rpc_id(peer_id, "_receive_input_tick", msg)
 	
 	var input_frame := _get_or_create_input_frame(input_tick)
 	if input_frame == null:
@@ -372,11 +403,10 @@ func _physics_process(delta: float) -> void:
 	
 	input_frame.players[get_tree().get_network_unique_id()] = InputForPlayer.new(local_input, false)
 	
-	
 	if current_tick > 0:
 		_do_tick(delta)
 
-remote func receive_tick(msg: Dictionary) -> void:
+remote func _receive_input_tick(msg: Dictionary) -> void:
 	if not started:
 		return
 	
@@ -417,3 +447,18 @@ remote func receive_tick(msg: Dictionary) -> void:
 	else:
 		# So, we just store this input for when we get to it.
 		input_frame.players[peer_id] = InputForPlayer.new(input, false)
+
+master func _log_saved_state(tick: int, remote_data: Dictionary) -> void:
+	var peer_id = get_tree().get_rpc_sender_id()
+	
+	var local_state := _get_state_frame(tick)
+	if local_state == null:
+		print ("State logged by %s for tick %s which we don't have saved" % [peer_id, tick])
+		return
+	
+	var local_data = local_state.data
+	if local_data.hash() != remote_data.hash():
+		print ("On tick %s, remote state from %s doesn't match local state" % [tick, peer_id])
+		print ("Remote data: %s" % remote_data)
+		print ("Local data: %s" % local_data)
+		print ("-----")
