@@ -60,11 +60,13 @@ var state_buffer := []
 
 var max_state_count := 20
 var ticks_to_calculate_advantage := 60
+var input_delay := 2
 
 # In seconds, because we don't want it to be dependent on the network tick.
 var ping_frequency := 1.0 setget set_ping_frequency
 
 var current_tick: int = 0
+var render_tick: int = 0
 var skip_ticks: int = 0
 var rollback_ticks: int = 0
 var started := false
@@ -129,6 +131,12 @@ func start() -> void:
 		rpc("_remote_start")
 
 remotesync func _remote_start() -> void:
+	current_tick = 0
+	render_tick = current_tick - input_delay
+	skip_ticks = 0
+	rollback_ticks = 0
+	input_buffer.clear()
+	state_buffer.clear()
 	started = true
 	emit_signal("sync_started")
 
@@ -142,7 +150,9 @@ func stop() -> void:
 remotesync func _remote_stop() -> void:
 	started = false
 	current_tick = 0
+	render_tick = 0
 	skip_ticks = 0
+	rollback_ticks = 0
 	input_buffer.clear()
 	state_buffer.clear()
 
@@ -172,8 +182,8 @@ func _call_load_state(state: Dictionary) -> void:
 				node._load_state(state[node_path])
 
 func _do_tick(delta: float) -> void:
-	var input_frame := _get_input_frame(current_tick)
-	var previous_frame := _get_input_frame(current_tick - 1)
+	var input_frame := _get_input_frame(render_tick)
+	var previous_frame := _get_input_frame(render_tick - 1)
 	for peer_id in peers:
 		if not input_frame.players.has(peer_id) or input_frame.players[peer_id].predicted:
 			var predicted_input := {}
@@ -220,7 +230,7 @@ func _physics_process(delta: float) -> void:
 		state_buffer.append(_call_save_state())
 	
 	if rollback_ticks > 0:
-		var original_tick = current_tick
+		var original_tick = render_tick
 		
 		# Rollback our internal state.
 		assert(rollback_ticks + 1 <= state_buffer.size(), "Not enough state in buffer to rollback requested number of frames")
@@ -232,14 +242,14 @@ func _physics_process(delta: float) -> void:
 		
 		_call_load_state(state_buffer[-rollback_ticks - 1])
 		state_buffer.resize(state_buffer.size() - rollback_ticks)
-		current_tick -= rollback_ticks
+		render_tick -= rollback_ticks
 		
 		# Iterate forward until we're at the same spot we left off.
 		while rollback_ticks > 0:
-			current_tick += 1
+			render_tick += 1
 			_do_tick(delta)
 			rollback_ticks -= 1
-		assert(current_tick == original_tick, "Rollback didn't return to the original tick")
+		assert(render_tick == original_tick, "Rollback didn't return to the original tick")
 	
 	if skip_ticks > 0:
 		skip_ticks -= 1
@@ -264,6 +274,7 @@ func _physics_process(delta: float) -> void:
 		return
 	
 	current_tick += 1
+	render_tick += 1
 	
 	var local_input = _gather_local_input(1)
 	
@@ -289,7 +300,8 @@ func _physics_process(delta: float) -> void:
 			stop()
 			return
 	
-	_do_tick(delta)
+	if render_tick > 0:
+		_do_tick(delta)
 
 remote func receive_tick(msg: Dictionary) -> void:
 	if not started:
@@ -309,7 +321,7 @@ remote func receive_tick(msg: Dictionary) -> void:
 	
 	var input: Dictionary = msg['input']
 	var input_frame := _get_input_frame(msg['tick'])
-	var tick_delta = current_tick - msg['tick']
+	var tick_delta = render_tick - msg['tick']
 	
 	# If we received a tick in the past...
 	if tick_delta >= 0:
