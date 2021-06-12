@@ -59,6 +59,14 @@ class InputBufferFrame:
 				return false
 		return true
 
+class StateBufferFrame:
+	var tick: int
+	var data: Dictionary
+	
+	func _init(_tick, _data) -> void:
+		tick = _tick
+		data = _data
+
 var peers := {}
 var input_buffer := []
 var state_buffer := []
@@ -233,7 +241,7 @@ func _do_tick(delta: float) -> void:
 	
 	_call_network_process(delta, input_frame)
 	
-	state_buffer.append(_call_save_state())
+	state_buffer.append(StateBufferFrame.new(current_tick, _call_save_state()))
 	while state_buffer.size() > max_state_count:
 		state_buffer.pop_front()
 
@@ -260,7 +268,7 @@ func _physics_process(delta: float) -> void:
 	
 	if current_tick == 0:
 		# Store an initial state before any ticks.
-		state_buffer.append(_call_save_state())
+		state_buffer.append(StateBufferFrame.new(current_tick, _call_save_state()))
 	
 	if rollback_debug_ticks > 0 and current_tick >= rollback_debug_ticks:
 		rollback_ticks = max(rollback_ticks, rollback_debug_ticks)
@@ -276,7 +284,7 @@ func _physics_process(delta: float) -> void:
 			stop()
 			return
 		
-		_call_load_state(state_buffer[-rollback_ticks - 1])
+		_call_load_state(state_buffer[-rollback_ticks - 1].data)
 		state_buffer.resize(state_buffer.size() - rollback_ticks)
 		current_tick -= rollback_ticks
 		
