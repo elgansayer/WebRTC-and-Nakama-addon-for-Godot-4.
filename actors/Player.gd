@@ -30,6 +30,9 @@ func die() -> void:
 	emit_signal("player_dead")
 
 func _network_process(delta: float, input_frame, sync_manager) -> void:
+	if not input_frame.players.has(get_network_master()):
+		return
+	
 	var input = input_frame.players[get_network_master()].input
 	var vector = input.get('input_vector', Vector2.ZERO)
 	vector *= (speed * delta)
