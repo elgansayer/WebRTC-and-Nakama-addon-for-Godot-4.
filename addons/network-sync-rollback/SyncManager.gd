@@ -65,36 +65,44 @@ var state_buffer := []
 
 var max_state_count := 20
 var ticks_to_calculate_advantage := 60
-var input_delay := 2
+var input_delay := 2 setget set_input_delay
 var rollback_debug_ticks := 0
 
 # In seconds, because we don't want it to be dependent on the network tick.
 var ping_frequency := 1.0 setget set_ping_frequency
 
-var input_tick: int = 0
-var current_tick: int = 0
-var skip_ticks: int = 0
-var rollback_ticks: int = 0
-var started := false
+var input_tick: int = 0 setget _set_readonly_variable
+var current_tick: int = 0 setget _set_readonly_variable
+var skip_ticks: int = 0 setget _set_readonly_variable
+var rollback_ticks: int = 0 setget _set_readonly_variable
+var started := false setget _set_readonly_variable
 
-var ping_timer: Timer
+var _ping_timer: Timer
 
 signal sync_started ()
 signal sync_stopped ()
 signal peer_pinged_back (peer)
 
 func _ready() -> void:
-	ping_timer = Timer.new()
-	ping_timer.wait_time = ping_frequency
-	ping_timer.autostart = true
-	ping_timer.one_shot = false
-	ping_timer.connect("timeout", self, "_on_ping_timer_timeout")
-	add_child(ping_timer)
+	_ping_timer = Timer.new()
+	_ping_timer.wait_time = ping_frequency
+	_ping_timer.autostart = true
+	_ping_timer.one_shot = false
+	_ping_timer.connect("timeout", self, "_on_ping_timer_timeout")
+	add_child(_ping_timer)
+
+func _set_readonly_variable(_value) -> void:
+	pass
 
 func set_ping_frequency(_ping_frequency) -> void:
 	ping_frequency = _ping_frequency
-	if ping_timer:
-		ping_timer.wait_time = _ping_frequency
+	if _ping_timer:
+		_ping_timer.wait_time = _ping_frequency
+
+func set_input_delay(_input_delay: int) -> void:
+	if started:
+		push_warning("Cannot change input delay after sync'ing has already started")
+	input_delay = _input_delay
 
 func add_peer(peer_id: int) -> void:
 	assert(not peers.has(peer_id), "Peer with given id already exists")
