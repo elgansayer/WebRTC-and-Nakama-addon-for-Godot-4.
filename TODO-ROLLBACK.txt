@@ -2,5 +2,13 @@ TODO
 ====
 
  - Add some error signal to SyncManager so we can handle catastrophic failures
+ - Add some "logging" (isn't just print()ing logging?) in addition to human readable errors
+ - Switch to using enum in dictionary for input
  - Attempt to use rpc_unreliable() instead of plain rpc() for the tick messages
+ - Fix win detection to work with rollback model (will this fix the position going out of sync?)
+ - Implement NetworkFrameTimer node that counts frames rather than time
+ - Add some kind of utility for sync'ing AnimationPlayer's? (Could be a script to add to the AnimationPlayer node?)
+ - Add debug window (F11?) that shows ping, time, advantage, skipped frames and rollbacks
+ - Do some 3-4 player playtests?
+ - Dig into possible physics issues with rollback
 
