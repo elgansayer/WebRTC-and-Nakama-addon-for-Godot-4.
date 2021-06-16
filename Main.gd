@@ -73,6 +73,7 @@ func _on_OnlineMatch_error(message: String):
 	if message != '':
 		ui_layer.show_message(message)
 	ui_layer.show_screen("MatchScreen")
+	SyncManager.stop()
 
 func _on_OnlineMatch_disconnected():
 	#_on_OnlineMatch_error("Disconnected from host")
