@@ -106,6 +106,11 @@ var _logged_remote_state: Dictionary
 signal sync_started ()
 signal sync_stopped ()
 signal sync_error (msg)
+signal skip_ticks_flagged (count)
+signal rollback_flagged (tick, peer_id, local_input, remote_input)
+signal remote_state_mismatch (tick, peer_id, local_state, remote_state)
+signal peer_added (peer_id)
+signal peer_removed (peer_id)
 signal peer_pinged_back (peer)
 
 func _ready() -> void:
@@ -139,15 +144,19 @@ func add_peer(peer_id: int) -> void:
 		return
 	
 	peers[peer_id] = Peer.new(peer_id)
+	emit_signal("peer_added", peer_id)
 
 func has_peer(peer_id: int) -> bool:
 	return peers.has(peer_id)
 
 func remove_peer(peer_id: int) -> void:
-	peers.erase(peer_id)
+	if peers.has(peer_id):
+		peers.erase(peer_id)
+		emit_signal("peer_removed", peer_id)
 
 func clear_peers() -> void:
-	peers.clear()
+	for peer_id in peers.keys().duplicate():
+		remove_peer(peer_id)
 
 func _on_ping_timer_timeout() -> void:
 	var system_time = OS.get_system_time_msecs()
@@ -418,8 +427,7 @@ func _physics_process(delta: float) -> void:
 			return
 	
 	var max_advantage: float
-	for peer_id in peers:
-		var peer = peers[peer_id]
+	for peer in peers.values():
 		# Number of frames we are predicting for this peer.
 		peer.local_lag = (input_tick + 1) - peer.last_remote_tick_received
 		# Calculate the advantage the peer has over us.
@@ -429,6 +437,7 @@ func _physics_process(delta: float) -> void:
 		
 	if max_advantage >= 2.0 and skip_ticks == 0:
 		skip_ticks = int(max_advantage / 2)
+		emit_signal("skip_ticks_flagged", skip_ticks)
 		return
 	
 	input_tick += 1
@@ -456,6 +465,13 @@ func _physics_process(delta: float) -> void:
 remote func _receive_input_tick(msg: Dictionary) -> void:
 	if not started:
 		return
+	if msg[InputMessageKey.TICK] >= input_tick + max_buffer_size:
+		# This either happens because we are really far behind (but maybe, just
+		# maybe could catch up) or we are receiving old ticks from a previous
+		# round that hadn't yet arrived. Just discard the message and hope for
+		# the best, but if we can't keep up, another one of the fail safes will
+		# detect that we are out of sync.
+		return
 	
 	var peer_id = get_tree().get_rpc_sender_id()
 	var peer: Peer = peers[peer_id]
@@ -476,14 +492,13 @@ remote func _receive_input_tick(msg: Dictionary) -> void:
 		if tick_delta >= 0 and rollback_ticks <= tick_delta:
 			# Check if input matches what we had predicted, if not, inject it and then
 			# flag that we need to rollback.	
-			if input_frame.get_player_input(peer_id).hash() != remote_input.hash():
-				input_frame.players[peer_id] = InputForPlayer.new(remote_input, false)
+			var local_input = input_frame.get_player_input(peer_id)
+			if local_input.hash() != remote_input.hash():
 				rollback_ticks = tick_delta + 1
+				input_frame.players[peer_id] = InputForPlayer.new(remote_input, false)
+				emit_signal("rollback_flagged", remote_tick, peer_id, local_input, remote_input)
 				
-				print ("Received input: %s" % remote_input)
-				print ("Predicted input: %s" % input_frame.get_player_input(peer_id))
-				print ("Flagging a rollback of %s ticks" % rollback_ticks)
-				print ("-----")
+
 			else:
 				# We predicted right, so just mark the input as correct!
 				input_frame.players[peer_id].predicted = false
@@ -526,8 +541,5 @@ func _process_logged_remote_state() -> void:
 func _check_remote_state(peer_id: int, remote_state: StateBufferFrame, local_state: StateBufferFrame) -> void:
 	#print ("checking remote state for tick: %s" % remote_state.tick)
 	if local_state.data.hash() != remote_state.data.hash():
-		print ("On tick %s, remote state from %s doesn't match local state" % [remote_state.tick, peer_id])
-		print ("Remote data: %s" % remote_state.data)
-		print ("Local data: %s" % local_state.data)
-		print ("-----")
+		emit_signal("remote_state_mismatch", local_state.tick, peer_id, local_state.data, remote_state.data)
 
