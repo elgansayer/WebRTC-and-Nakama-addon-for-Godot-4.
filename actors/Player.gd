@@ -54,9 +54,6 @@ func _predict_network_input(previous_input: Dictionary) -> Dictionary:
 	return predicted
 
 func _network_process(delta: float, input: Dictionary, sync_manager) -> void:
-	if animation_player.is_playing():
-		animation_player.advance(delta)
-	
 	var vector = input.get(PlayerInputKey.INPUT_VECTOR, Vector2.ZERO)
 	vector *= (speed * delta)
 	move_and_collide(vector)
@@ -66,23 +63,9 @@ func _network_process(delta: float, input: Dictionary, sync_manager) -> void:
 		animation_player.play("Attack")
 
 func _save_state() -> Dictionary:
-	var state = {
+	return {
 		position = position,
-		animation_player_is_playing = false,
-		animation_player_current_animation = '',
-		animation_player_current_position = 0.0,
 	}
-	if animation_player.is_playing():
-		state['animation_player_is_playing'] = true
-		state['animation_player_current_animation'] = animation_player.current_animation
-		state['animation_player_current_position'] = animation_player.current_animation_position
-	return state
 
 func _load_state(state: Dictionary) -> void:
 	position = state['position']
-	animation_player.stop()
-	if state['animation_player_is_playing']:
-		animation_player.play(state['animation_player_current_animation'])
-		# @todo maybe use .advance() instead? (idea from Thomas Szot)
-		animation_player.seek(state['animation_player_current_position'], true)
-

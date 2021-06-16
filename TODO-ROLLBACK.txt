@@ -1,7 +1,6 @@
 TODO
 ====
 
- - Add some kind of utility for sync'ing AnimationPlayer's? (Could be a script to add to the AnimationPlayer node?)
  - Do some 3-4 player playtests?
  - Dig into possible physics issues with rollback
 
