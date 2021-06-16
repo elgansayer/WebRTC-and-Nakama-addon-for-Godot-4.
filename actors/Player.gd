@@ -11,7 +11,7 @@ var speed := 400.0
 
 signal player_dead ()
 
-enum PlayerInputType {
+enum PlayerInputKey {
 	INPUT_VECTOR,
 	ATTACK_PRESSED,
 }
@@ -41,27 +41,27 @@ func _get_local_input() -> Dictionary:
 		Input.get_action_strength(input_prefix + "right") - Input.get_action_strength(input_prefix + "left"),
 		Input.get_action_strength(input_prefix + "down") - Input.get_action_strength(input_prefix + "up")).normalized()
 	if input_vector != Vector2.ZERO:
-		input[PlayerInputType.INPUT_VECTOR] = input_vector
+		input[PlayerInputKey.INPUT_VECTOR] = input_vector
 	
 	if Input.is_action_just_pressed(input_prefix + "attack"):
-		input[PlayerInputType.ATTACK_PRESSED] = true
+		input[PlayerInputKey.ATTACK_PRESSED] = true
 	
 	return input
 
 func _predict_network_input(previous_input: Dictionary) -> Dictionary:
 	var predicted = previous_input.duplicate()
-	predicted.erase(PlayerInputType.ATTACK_PRESSED)
+	predicted.erase(PlayerInputKey.ATTACK_PRESSED)
 	return predicted
 
 func _network_process(delta: float, input: Dictionary, sync_manager) -> void:
 	if animation_player.is_playing():
 		animation_player.advance(delta)
 	
-	var vector = input.get(PlayerInputType.INPUT_VECTOR, Vector2.ZERO)
+	var vector = input.get(PlayerInputKey.INPUT_VECTOR, Vector2.ZERO)
 	vector *= (speed * delta)
 	move_and_collide(vector)
 	
-	var is_attacking: bool = not animation_player.is_playing() and input.get(PlayerInputType.ATTACK_PRESSED, false)
+	var is_attacking: bool = not animation_player.is_playing() and input.get(PlayerInputKey.ATTACK_PRESSED, false)
 	if is_attacking:
 		animation_player.play("Attack")
 

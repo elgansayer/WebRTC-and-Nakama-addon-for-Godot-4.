@@ -73,6 +73,12 @@ class StateBufferFrame:
 		tick = _tick
 		data = _data
 
+enum InputMessageKey {
+	TICK,
+	NEXT_TICK_REQUESTED,
+	INPUT,
+}
+
 var peers := {}
 var input_buffer := []
 var state_buffer := []
@@ -139,6 +145,9 @@ func has_peer(peer_id: int) -> bool:
 
 func remove_peer(peer_id: int) -> void:
 	peers.erase(peer_id)
+
+func clear_peers() -> void:
+	peers.clear()
 
 func _on_ping_timer_timeout() -> void:
 	var system_time = OS.get_system_time_msecs()
@@ -347,6 +356,25 @@ func is_player_input_complete(tick: int) -> bool:
 		return true
 	return input_frame.is_complete(peers)
 
+func _get_input_message_for_peer(peer: Peer) -> Dictionary:
+	var msg := {}
+	
+	var index := 0
+	# If we no longer have the next tick they requested, we just start at 0 in
+	# the buffer and hope they got that input frame from a previous message.
+	if peer.next_local_tick_requested > _input_buffer_start_tick:
+		index = peer.next_local_tick_requested - _input_buffer_start_tick
+	
+	var local_peer_id = get_tree().get_network_unique_id()
+	while index < input_buffer.size():
+		var input_frame: InputBufferFrame = input_buffer[index]
+		if not input_frame.players.has(local_peer_id):
+			break
+		msg[input_frame.tick] = input_frame.players[local_peer_id].input
+		index += 1
+	
+	return msg
+
 func _physics_process(delta: float) -> void:
 	if not started:
 		return
@@ -407,23 +435,20 @@ func _physics_process(delta: float) -> void:
 	current_tick += 1
 	
 	var local_input = _call_get_local_input()
-	
-	for peer_id in peers:
-		var peer = peers[peer_id]
-		var msg = {
-			tick = input_tick,
-			next_tick_requested = peer.last_remote_tick_received + 1,
-			input = local_input,
-		}
-		# @todo Convert this to rpc_unreliable_id() by including multiple sets
-		#       of input back to the peer.next_local_tick_requested
-		rpc_id(peer_id, "_receive_input_tick", msg)
-	
 	var input_frame := _get_or_create_input_frame(input_tick)
 	if input_frame == null:
 		return
 	
 	input_frame.players[get_tree().get_network_unique_id()] = InputForPlayer.new(local_input, false)
+	
+	for peer_id in peers:
+		var peer = peers[peer_id]
+		var msg = {
+			InputMessageKey.TICK: input_tick,
+			InputMessageKey.NEXT_TICK_REQUESTED: peer.last_remote_tick_received + 1,
+			InputMessageKey.INPUT: _get_input_message_for_peer(peer),
+		}
+		rpc_unreliable_id(peer_id, "_receive_input_tick", msg)
 	
 	if current_tick > 0:
 		_do_tick(delta)
@@ -433,42 +458,46 @@ remote func _receive_input_tick(msg: Dictionary) -> void:
 		return
 	
 	var peer_id = get_tree().get_rpc_sender_id()
-	var peer = peers[peer_id]
-	peer.last_remote_tick_received = msg['tick']
-	peer.next_local_tick_requested = msg['next_tick_requested']
+	var peer: Peer = peers[peer_id]
 	
+	# Integrate the input we received into the input buffer.
+	var all_remote_input: Dictionary = msg[InputMessageKey.INPUT]
+	for remote_tick in all_remote_input:
+		# Skip ticks we already have.
+		if remote_tick <= peer.last_remote_tick_received:
+			continue
+		
+		var remote_input = all_remote_input[remote_tick]
+		var input_frame := _get_or_create_input_frame(remote_tick)
+		var tick_delta = current_tick - remote_tick
+		
+		# If we received a tick in the past and we aren't already setup to
+		# rollback earlier than that...
+		if tick_delta >= 0 and rollback_ticks <= tick_delta:
+			# Check if input matches what we had predicted, if not, inject it and then
+			# flag that we need to rollback.	
+			if input_frame.get_player_input(peer_id).hash() != remote_input.hash():
+				input_frame.players[peer_id] = InputForPlayer.new(remote_input, false)
+				rollback_ticks = tick_delta + 1
+				
+				print ("Received input: %s" % remote_input)
+				print ("Predicted input: %s" % input_frame.get_player_input(peer_id))
+				print ("Flagging a rollback of %s ticks" % rollback_ticks)
+				print ("-----")
+			else:
+				# We predicted right, so just mark the input as correct!
+				input_frame.players[peer_id].predicted = false
+		# If we received a tick in the future, or are already set to rollback
+		# further anyway...
+		else:
+			# So, we just store this input for when we get to it.
+			input_frame.players[peer_id] = InputForPlayer.new(remote_input, false)
+	
+	# Record stats about the integrated input.
+	peer.last_remote_tick_received = max(msg[InputMessageKey.TICK], peer.last_remote_tick_received)
+	peer.next_local_tick_requested = max(msg[InputMessageKey.NEXT_TICK_REQUESTED], peer.next_local_tick_requested)
 	# Number of frames the remote is predicting for us.
 	peer.remote_lag = (peer.last_remote_tick_received + 1) - peer.next_local_tick_requested
-	
-	#
-	# Integrate the input we received into the input buffer.
-	#
-	
-	var input: Dictionary = msg['input']
-	var input_frame := _get_or_create_input_frame(msg['tick'])
-	var tick_delta = current_tick - msg['tick']
-	
-	# If we received a tick in the past...
-	if tick_delta >= 0:
-		# Check if input matches what we had predicted, if not, inject it and then
-		# flag that we need to rollback.	
-		if input_frame.get_player_input(peer_id).hash() != input.hash():
-			print ("Received input: %s" % input)
-			print ("Predicted input: %s" % input_frame.get_player_input(peer_id))
-			print ("-----")
-			input_frame.players[peer_id] = InputForPlayer.new(input, false)
-			# If we already flagged a rollback even further back, then we're good,
-			# we don't want to inadvertedly shorten the rollback.
-			if tick_delta + 1 > rollback_ticks:
-				rollback_ticks = tick_delta + 1
-				print ("Flagging a rollback of %s ticks" % rollback_ticks)
-		else:
-			# We predicted right, so just mark the input as correct!
-			input_frame.players[peer_id].predicted = false
-	# If we received a tick in the future...
-	else:
-		# So, we just store this input for when we get to it.
-		input_frame.players[peer_id] = InputForPlayer.new(input, false)
 
 master func _log_saved_state(tick: int, remote_data: Dictionary) -> void:
 	var peer_id = get_tree().get_rpc_sender_id()

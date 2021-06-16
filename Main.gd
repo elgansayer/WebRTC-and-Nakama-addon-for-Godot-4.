@@ -74,6 +74,7 @@ func _on_OnlineMatch_error(message: String):
 		ui_layer.show_message(message)
 	ui_layer.show_screen("MatchScreen")
 	SyncManager.stop()
+	SyncManager.clear_peers()
 
 func _on_OnlineMatch_disconnected():
 	#_on_OnlineMatch_error("Disconnected from host")
@@ -100,6 +101,7 @@ func _on_OnlineMatch_player_status_changed(player, status) -> void:
 
 func _on_SyncManager_sync_error(_msg: String) -> void:
 	OnlineMatch.leave()
+	SyncManager.clear_peers()
 	ui_layer.show_message("Synchronization lost")
 
 #####
