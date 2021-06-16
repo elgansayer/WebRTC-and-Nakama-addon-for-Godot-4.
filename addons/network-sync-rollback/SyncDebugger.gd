@@ -65,7 +65,7 @@ func _on_SyncManager_remote_state_mismatch(tick: int, peer_id: int, local_state:
 
 func _on_SyncManager_peer_pinged_back(peer: SyncManager.Peer) -> void:
 	print ("-----")
-	print ("Peer %s: RTT %s ms | local lag %s | advantage %s" % [peer.peer_id, peer.rtt, peer.local_lag, peer.calculated_advantage])
+	print ("Peer %s: RTT %s ms | local lag %s | remote lag %s | advantage %s" % [peer.peer_id, peer.rtt, peer.local_lag, peer.remote_lag, peer.calculated_advantage])
 	if _debug_overlay:
 		_debug_overlay.update_peer(peer)
 
