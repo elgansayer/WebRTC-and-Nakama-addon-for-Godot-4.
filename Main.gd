@@ -3,6 +3,7 @@ extends Node2D
 onready var game = $Game
 onready var ui_layer: UILayer = $UILayer
 onready var ready_screen = $UILayer/Screens/ReadyScreen
+onready var restart_timer = $RestartTimer
 
 var players := {}
 
@@ -129,8 +130,11 @@ func start_game() -> void:
 	
 	game.game_start(players)
 
-func stop_game() -> void:
-	OnlineMatch.leave()
+func stop_game(leave: bool = true) -> void:
+	if leave:
+		OnlineMatch.leave()
+	
+	restart_timer.stop()
 	
 	players.clear()
 	players_ready.clear()
@@ -139,10 +143,14 @@ func stop_game() -> void:
 	game.game_stop()
 
 func restart_game() -> void:
-	stop_game()
+	stop_game(false)
 	start_game()
 
 func _on_Game_game_started() -> void:
+	# @todo This is kind of a hack - we need a better way to set this always.
+	if players.size() == 0 and GameState.online_play:
+		players = OnlineMatch.get_player_names_by_peer_id()
+	
 	ui_layer.hide_screen()
 	ui_layer.hide_all()
 	ui_layer.show_back_button()
@@ -158,7 +166,7 @@ func _on_Game_game_over(player_id: int) -> void:
 	
 	if not GameState.online_play:
 		show_winner(players[player_id])
-	elif get_tree().is_network_server():
+	elif SyncManager.is_current_player_input_complete():
 		if not players_score.has(player_id):
 			players_score[player_id] = 1
 		else:
@@ -166,15 +174,17 @@ func _on_Game_game_over(player_id: int) -> void:
 		
 		var player_session_id = OnlineMatch.get_session_id(player_id)
 		var is_match: bool = players_score[player_id] >= 5
-		rpc("show_winner", players[player_id], player_session_id, players_score[player_id], is_match)
+		show_winner(players[player_id], player_session_id, players_score[player_id], is_match)
 
-remotesync func show_winner(name: String, session_id: String = '', score: int = 0, is_match: bool = false) -> void:
+func show_winner(name: String, session_id: String = '', score: int = 0, is_match: bool = false) -> void:
 	if is_match:
 		ui_layer.show_message(name + " WINS THE WHOLE MATCH!")
 	else:
 		ui_layer.show_message(name + " wins this round!")
 	
-	yield(get_tree().create_timer(2.0), "timeout")
+	restart_timer.start()
+	yield(restart_timer, "timeout")
+	
 	if not game.game_started:
 		return
 	
@@ -189,4 +199,3 @@ remotesync func show_winner(name: String, session_id: String = '', score: int = 
 			ui_layer.show_screen("ReadyScreen")
 	else:
 		restart_game()
-

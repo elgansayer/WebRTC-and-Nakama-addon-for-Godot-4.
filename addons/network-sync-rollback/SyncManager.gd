@@ -31,6 +31,16 @@ class Peer extends Reference:
 	func clear_advantage() -> void:
 		calculated_advantage = 0.0
 		advantage_list.clear()
+	
+	func clear() -> void:
+		rtt = 0
+		last_ping_received = 0
+		time_delta = 0
+		last_remote_tick_received = 0
+		next_local_tick_requested = 0
+		remote_lag = 0
+		local_lag = 0
+		clear_advantage()
 
 class InputForPlayer:
 	var input := {}
@@ -181,6 +191,8 @@ remote func _remote_ping_back(msg: Dictionary) -> void:
 
 func start() -> void:
 	assert(get_tree().is_network_server(), "start() should only be called on the host")
+	if started:
+		return
 	if get_tree().is_network_server():
 		# @todo Use latency information to time when we do our local start.
 		rpc("_remote_start")
@@ -216,6 +228,9 @@ remotesync func _remote_stop() -> void:
 	_input_buffer_start_tick = 0
 	_state_buffer_start_tick = 0
 	_logged_remote_state.clear()
+	
+	for peer in peers.values():
+		peer.clear()
 	
 	emit_signal("sync_stopped")
 
@@ -272,6 +287,7 @@ func _call_save_state() -> Dictionary:
 
 func _call_load_state(state: Dictionary) -> void:
 	for node_path in state:
+		assert(has_node(node_path), "Unable to restore state to missing node: %s" % node_path)
 		if has_node(node_path):
 			var node = get_node(node_path)
 			if node.has_method('_load_state'):
@@ -329,7 +345,7 @@ func _get_or_create_input_frame(tick: int) -> InputBufferFrame:
 		var retired_input_frame = input_buffer.pop_front()
 		if not retired_input_frame.is_complete(peers):
 			var missing: Array = retired_input_frame.get_missing_peers(peers)
-			return _handle_fatal_error("Retired an incomplete input frame (missing peer(s): %s)" % missing)
+			return _handle_fatal_error("Retired an incomplete input frame %s (missing peer(s): %s)" % [retired_input_frame.tick, missing])
 	
 	return input_frame
 
@@ -364,6 +380,9 @@ func is_player_input_complete(tick: int) -> bool:
 		# we would never allow if it wasn't complete.
 		return true
 	return input_frame.is_complete(peers)
+
+func is_current_player_input_complete() -> bool:
+	return is_player_input_complete(current_tick)
 
 func _get_input_message_for_peer(peer: Peer) -> Dictionary:
 	var msg := {}

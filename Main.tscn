@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=2]
+[gd_scene load_steps=10 format=2]
 
 [ext_resource path="res://Main.gd" type="Script" id=1]
 [ext_resource path="res://main/screens/ConnectionScreen.tscn" type="PackedScene" id=2]
@@ -8,6 +8,7 @@
 [ext_resource path="res://main/screens/ReadyScreen.tscn" type="PackedScene" id=6]
 [ext_resource path="res://main/screens/TitleScreen.tscn" type="PackedScene" id=7]
 [ext_resource path="res://assets/fonts/monogram.tres" type="DynamicFont" id=8]
+[ext_resource path="res://addons/network-sync-rollback/NetworkTimer.gd" type="Script" id=9]
 
 [node name="Main" type="Node2D"]
 script = ExtResource( 1 )
@@ -67,6 +68,12 @@ text = "X"
 __meta__ = {
 "_edit_use_anchors_": false
 }
+
+[node name="RestartTimer" type="Node" parent="."]
+script = ExtResource( 9 )
+one_shot = true
+wait_ticks = 120
+timeout_with_incomplete_input = false
 
 [connection signal="game_over" from="Game" to="." method="_on_Game_game_over"]
 [connection signal="game_started" from="Game" to="." method="_on_Game_game_started"]
