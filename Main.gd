@@ -129,8 +129,9 @@ func start_game() -> void:
 	
 	game.game_start(players)
 
-func stop_game() -> void:
-	OnlineMatch.leave()
+func stop_game(leave: bool = true) -> void:
+	if leave:
+		OnlineMatch.leave()
 	
 	players.clear()
 	players_ready.clear()
@@ -139,7 +140,7 @@ func stop_game() -> void:
 	game.game_stop()
 
 func restart_game() -> void:
-	stop_game()
+	stop_game(false)
 	start_game()
 
 func _on_Game_game_started() -> void:

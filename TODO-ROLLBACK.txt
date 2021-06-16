@@ -1,8 +1,8 @@
 TODO
 ====
 
- - Fix win detection to work with rollback model (will this fix the position going out of sync?)
  - Implement NetworkFrameTimer node that counts frames rather than time
+ - Fix win detection to work with rollback model (will this fix the position going out of sync?)
  - Add some kind of utility for sync'ing AnimationPlayer's? (Could be a script to add to the AnimationPlayer node?)
  - Do some 3-4 player playtests?
  - Dig into possible physics issues with rollback

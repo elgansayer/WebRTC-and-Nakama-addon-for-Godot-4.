@@ -365,6 +365,9 @@ func is_player_input_complete(tick: int) -> bool:
 		return true
 	return input_frame.is_complete(peers)
 
+func is_current_player_input_complete() -> bool:
+	return is_player_input_complete(current_tick)
+
 func _get_input_message_for_peer(peer: Peer) -> Dictionary:
 	var msg := {}
 	
