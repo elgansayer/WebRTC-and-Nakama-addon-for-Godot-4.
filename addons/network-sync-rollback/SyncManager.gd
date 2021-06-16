@@ -1,5 +1,4 @@
 extends Node
-class_name SyncManager
 
 class Peer extends Reference:
 	var peer_id: int
@@ -53,6 +52,13 @@ class InputBufferFrame:
 			return players[peer_id].input
 		return {}
 	
+	func get_missing_peers(peers: Dictionary) -> Array:
+		var missing := []
+		for peer_id in peers:
+			if not players.has(peer_id) or players[peer_id].predicted:
+				missing.append(peer_id)
+		return missing
+	
 	func is_complete(peers: Dictionary) -> bool:
 		for peer_id in peers:
 			if not players.has(peer_id) or players[peer_id].predicted:
@@ -71,7 +77,7 @@ var peers := {}
 var input_buffer := []
 var state_buffer := []
 
-var max_state_count := 20
+var max_buffer_size := 20
 var ticks_to_calculate_advantage := 60
 var input_delay := 2 setget set_input_delay
 var rollback_debug_ticks := 0
@@ -93,6 +99,7 @@ var _logged_remote_state: Dictionary
 
 signal sync_started ()
 signal sync_stopped ()
+signal sync_error (msg)
 signal peer_pinged_back (peer)
 
 func _ready() -> void:
@@ -118,9 +125,13 @@ func set_input_delay(_input_delay: int) -> void:
 
 func add_peer(peer_id: int) -> void:
 	assert(not peers.has(peer_id), "Peer with given id already exists")
+	assert(peer_id != get_tree().get_network_unique_id(), "Cannot add ourselves as a peer in SyncManager")
 	
 	if peers.has(peer_id):
 		return
+	if peer_id == get_tree().get_network_unique_id():
+		return
+	
 	peers[peer_id] = Peer.new(peer_id)
 
 func has_peer(peer_id: int) -> bool:
@@ -187,6 +198,14 @@ remotesync func _remote_stop() -> void:
 	_input_buffer_start_tick = 0
 	_state_buffer_start_tick = 0
 	_logged_remote_state.clear()
+	
+	emit_signal("sync_stopped")
+
+func _handle_fatal_error(msg: String):
+	emit_signal("sync_error", msg)
+	push_error("NETWORK SYNC LOST: " + msg)
+	stop()
+	return null
 
 func _call_get_local_input() -> Dictionary:
 	var input := {}
@@ -248,7 +267,7 @@ func _save_current_state() -> void:
 	var state_data = _call_save_state()
 	state_buffer.append(StateBufferFrame.new(current_tick, state_data))
 	
-	while state_buffer.size() > max_state_count:
+	while state_buffer.size() > max_buffer_size:
 		state_buffer.pop_front()
 		_state_buffer_start_tick += 1
 	
@@ -284,19 +303,15 @@ func _get_or_create_input_frame(tick: int) -> InputBufferFrame:
 	else:
 		input_frame = _get_input_frame(tick)
 		if input_frame == null:
-			push_error("Requested input frame not found in buffer")
-			stop()
-			return null
+			return _handle_fatal_error("Requested input frame (%s) not found in buffer" % tick)
 	
 	# Clean-up old input buffer frames.
-	while input_buffer.size() > max_state_count:
+	while input_buffer.size() > max_buffer_size:
 		_input_buffer_start_tick += 1
 		var retired_input_frame = input_buffer.pop_front()
 		if not retired_input_frame.is_complete(peers):
-			push_error("Retired an incomplete input frame")
-			# @todo Yell loudly that things are broken!
-			stop()
-			return null
+			var missing: Array = retired_input_frame.get_missing_peers(peers)
+			return _handle_fatal_error("Retired an incomplete input frame (missing peer(s): %s)" % missing)
 	
 	return input_frame
 
@@ -349,9 +364,7 @@ func _physics_process(delta: float) -> void:
 		# Rollback our internal state.
 		assert(rollback_ticks + 1 <= state_buffer.size(), "Not enough state in buffer to rollback requested number of frames")
 		if rollback_ticks + 1 > state_buffer.size():
-			# @todo Report error in some organized way!
-			push_error("Not enough state in buffer to rollback %s frame" % rollback_ticks)
-			stop()
+			_handle_fatal_error("Not enough state in buffer to rollback %s frames" % rollback_ticks)
 			return
 		
 		_call_load_state(state_buffer[-rollback_ticks - 1].data)

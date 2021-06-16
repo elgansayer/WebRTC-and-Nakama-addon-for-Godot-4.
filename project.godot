@@ -79,11 +79,6 @@ _global_script_classes=[ {
 "language": "GDScript",
 "path": "res://addons/com.heroiclabs.nakama/api/NakamaWriteStorageObject.gd"
 }, {
-"base": "Node",
-"class": "SyncManager",
-"language": "GDScript",
-"path": "res://addons/network-sync-rollback/SyncManager.gd"
-}, {
 "base": "CanvasLayer",
 "class": "UILayer",
 "language": "GDScript",
@@ -104,7 +99,6 @@ _global_script_class_icons={
 "NakamaSocketAdapter": "",
 "NakamaStorageObjectId": "",
 "NakamaWriteStorageObject": "",
-"SyncManager": "",
 "UILayer": ""
 }
 
@@ -121,6 +115,7 @@ Nakama="*res://addons/com.heroiclabs.nakama/Nakama.gd"
 OnlineMatch="*res://addons/nakama-webrtc/OnlineMatch.gd"
 Online="*res://autoload/Online.gd"
 GameState="*res://autoload/GameState.gd"
+SyncManager="*res://addons/network-sync-rollback/SyncManager.gd"
 
 [display]
 

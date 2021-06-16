@@ -14,6 +14,7 @@ func _ready() -> void:
 	OnlineMatch.connect("disconnected", self, "_on_OnlineMatch_disconnected")
 	OnlineMatch.connect("player_status_changed", self, "_on_OnlineMatch_player_status_changed")
 	OnlineMatch.connect("player_left", self, "_on_OnlineMatch_player_left")
+	SyncManager.connect("sync_error", self, "_on_SyncManager_sync_error")
 
 #func _unhandled_input(event: InputEvent) -> void:
 #	# Trigger debugging action!
@@ -81,17 +82,24 @@ func _on_OnlineMatch_player_left(player) -> void:
 	ui_layer.show_message(player.username + " has left")
 	
 	game.kill_player(player.peer_id)
-	game.sync_manager.remove_peer(player.peer_id)
+	
+	SyncManager.remove_peer(player.peer_id)
 	
 	players.erase(player.peer_id)
 	players_ready.erase(player.peer_id)
 
 func _on_OnlineMatch_player_status_changed(player, status) -> void:
 	if status == OnlineMatch.PlayerStatus.CONNECTED:
+		if player.peer_id != get_tree().get_network_unique_id():
+			SyncManager.add_peer(player.peer_id)
 		if get_tree().is_network_server():
 			# Tell this new player about all the other players that are already ready.
 			for session_id in players_ready:
 				rpc_id(player.peer_id, "player_ready", session_id)
+
+func _on_SyncManager_sync_error(_msg: String) -> void:
+	OnlineMatch.leave()
+	ui_layer.show_message("Synchronization lost")
 
 #####
 # Gameplay methods and callbacks

@@ -8,7 +8,6 @@ onready var map: Node2D = $Map
 onready var players_node := $Players
 onready var camera := $Camera2D
 onready var original_camera_position: Vector2 = camera.global_position
-onready var sync_manager = $SyncManager
 
 var game_started := false
 var game_over := false
@@ -52,9 +51,6 @@ remotesync func _do_game_setup(players: Dictionary) -> void:
 		if not GameState.online_play:
 			other_player.player_controlled = true
 			other_player.input_prefix = "player" + str(player_index) + "_"
-		else:
-			if peer_id != get_tree().get_network_unique_id() and not sync_manager.has_peer(peer_id):
-				sync_manager.add_peer(peer_id)
 		
 		player_index += 1
 	
@@ -74,7 +70,7 @@ mastersync func _finished_game_setup(player_id: int) -> void:
 	if players_setup.size() == players_alive.size():
 		# Once all clients have finished setup, tell them to start the game.
 		rpc("_do_game_start")
-		sync_manager.start()
+		SyncManager.start()
 
 # Actually start the game on this client.
 remotesync func _do_game_start() -> void:
