@@ -251,8 +251,20 @@ func get_session_id(peer_id: int):
 			return session_id
 	return null
 
+func get_player_by_peer_id(peer_id: int):
+	var session_id = get_session_id(peer_id)
+	if session_id:
+		return players[session_id]
+	return null
+
+func get_players_by_peer_id() -> Dictionary:
+	var result := {}
+	for player in players.values():
+		result[player.peer_id] = player
+	return result
+
 func get_player_names_by_peer_id() -> Dictionary:
-	var result = {}
+	var result := {}
 	for session_id in players:
 		result[players[session_id]['peer_id']] = players[session_id]['username']
 	return result
@@ -337,8 +349,15 @@ func _on_nakama_match_presence(data: NakamaRTAPI.MatchPresenceEvent) -> void:
 			if players.size() < min_players:
 				# If state was previously ready, but this brings us below the minimum players,
 				# then we aren't ready anymore.
-				if match_state == MatchState.READY || match_state == MatchState.PLAYING:
+				if match_state == MatchState.READY:
+					match_state = MatchState.WAITING_FOR_ENOUGH_PLAYERS
 					emit_signal("match_not_ready")
+			else:
+				# If the remaining players are all fully connected, then set 
+				# the match state to ready.
+				if _webrtc_peers_connected.size() == players.size() - 1:
+					match_state = MatchState.READY;
+					emit_signal("match_ready", players)
 
 func _on_nakama_match_join(data: NakamaRTAPI.Match) -> void:
 	match_id = data.match_id
@@ -528,6 +547,7 @@ func _on_webrtc_peer_connected(peer_id: int) -> void:
 	for session_id in players:
 		if players[session_id]['peer_id'] == peer_id:
 			_webrtc_peers_connected[session_id] = true
+			#print ("WebRTC peer connected: " + str(peer_id))
 			emit_signal("player_status_changed", players[session_id], PlayerStatus.CONNECTED)
 
 	# We have a WebRTC peer for each connection to another player, so we'll have one less than
