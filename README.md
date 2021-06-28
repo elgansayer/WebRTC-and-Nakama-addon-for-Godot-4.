@@ -15,7 +15,11 @@ connections using Nakama as the signaling server.
 Getting Started
 ---------------
 
-1. Copy the `addons/` directory into your project.
+Read the [full tutorial](https://www.snopekgames.com/tutorial/2021/how-use-webrtc-godot-nakama-signalling-server) on SnopekGames.com.
+
+### TL;DR ###
+
+1. Copy the `addons/`, `webrtc/` and `webrtc_debug/` directories into your project.
 
 2. Add the `Nakama.gd` singleton (in `addons/com.heroiclabs.nakama/`) as an [autoload in Godot](https://docs.godotengine.org/en/stable/getting_started/step_by_step/singletons_autoload.html).
 
@@ -28,6 +32,9 @@ This project is a full demo showing how to use this addon, and, in fact, makes
 a pretty good template project to start from.
 
 Download the full source code and import into Godot 3.2.3 to run.
+
+Run `docker-compose up -d` in the top-level directory of the code to start a
+Nakama instance with the default settings.
 
 In both local and online mode, gamepads are supported, using the XBox A button
 to attack. The keyboard controls are WASD for movement and SPACE for attack.
