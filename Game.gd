@@ -18,6 +18,9 @@ signal game_started ()
 signal player_dead (player_id)
 signal game_over (player_id)
 
+func _ready() -> void:
+	SyncManager.connect("scene_spawned", self, "_on_SyncManager_scene_spawned")
+
 func game_start(players: Dictionary) -> void:
 	if GameState.online_play:
 		rpc("_do_game_setup", players)
@@ -39,30 +42,24 @@ remotesync func _do_game_setup(players: Dictionary) -> void:
 	
 	var player_index := 1
 	for peer_id in players:
-		var other_player = Player.instance()
-		other_player.name = str(peer_id)
-		players_node.add_child(other_player)
-		
-		other_player.set_network_master(peer_id)
-		other_player.set_player_name(players[peer_id])
-		other_player.position = map.get_node("PlayerStartPositions/Player" + str(player_index)).position
-		other_player.connect("player_dead", self, "_on_player_dead", [peer_id])
-		
-		if not GameState.online_play:
-			other_player.player_controlled = true
-			other_player.input_prefix = "player" + str(player_index) + "_"
-		
+		var spawn_data := {
+			peer_id = peer_id,
+			player_index = player_index,
+			player_name = players[peer_id],
+			start_transform = map.get_node("PlayerStartPositions/Player" + str(player_index)).global_transform,
+		}
+		var other_player = SyncManager.spawn(str(peer_id), players_node, Player, spawn_data, false, "Player")
 		player_index += 1
 	
 	if GameState.online_play:
-		var my_id := get_tree().get_network_unique_id()
-		var my_player := players_node.get_node(str(my_id))
-		my_player.player_controlled = true
-		
 		# Tell the host that we've finished setup.
-		rpc_id(1, "_finished_game_setup", my_id)
+		rpc_id(1, "_finished_game_setup", get_tree().get_network_unique_id())
 	else:
 		_do_game_start()
+
+func _on_SyncManager_scene_spawned(name: String, spawned_node: Node, scene: PackedScene, data: Dictionary) -> void:
+	if name == 'Player':
+		spawned_node.connect("player_dead", self, "_on_player_dead", [data['peer_id']])
 
 # Records when each player has finished setup so we know when all players are ready.
 mastersync func _finished_game_setup(player_id: int) -> void:

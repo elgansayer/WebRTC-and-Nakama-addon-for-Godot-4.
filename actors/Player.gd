@@ -8,6 +8,7 @@ export (bool) var player_controlled := false
 export (String) var input_prefix := "player1_"
 
 var speed := 400.0
+var player_index := 0
 
 signal player_dead ()
 
@@ -15,6 +16,19 @@ enum PlayerInputKey {
 	INPUT_VECTOR,
 	ATTACK_PRESSED,
 }
+
+func _network_spawn(data: Dictionary) -> void:
+	global_transform = data['start_transform']
+	player_index = data['player_index']
+	set_network_master(data['peer_id'])
+	set_player_name(data['player_name'])
+	
+	if GameState.online_play:
+		if data['peer_id'] == get_tree().get_network_unique_id():
+			player_controlled = true
+	else:
+		player_controlled = true
+		input_prefix = "player" + str(player_index) + "_"
 
 func set_player_name(player_name: String) -> void:
 	player_name_label.text = player_name
@@ -53,7 +67,7 @@ func _predict_network_input(previous_input: Dictionary) -> Dictionary:
 	predicted.erase(PlayerInputKey.ATTACK_PRESSED)
 	return predicted
 
-func _network_process(delta: float, input: Dictionary, sync_manager) -> void:
+func _network_process(delta: float, input: Dictionary) -> void:
 	var vector = input.get(PlayerInputKey.INPUT_VECTOR, Vector2.ZERO)
 	vector *= (speed * delta)
 	move_and_collide(vector)

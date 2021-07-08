@@ -11,6 +11,8 @@ func _ready() -> void:
 	SyncManager.connect("skip_ticks_flagged", self, "_on_SyncManager_skip_ticks_flagged")
 	SyncManager.connect("remote_state_mismatch", self, "_on_SyncManager_remote_state_mismatch")
 	SyncManager.connect("peer_pinged_back", self, "_on_SyncManager_peer_pinged_back")
+	SyncManager.connect("state_loaded", self, "_on_SyncManager_state_loaded")
+	SyncManager.connect("tick_finished", self, "_on_SyncManager_tick_finished")
 
 func create_debug_overlay(overlay_instance = null) -> void:
 	if _debug_overlay != null:
@@ -68,6 +70,16 @@ func _on_SyncManager_peer_pinged_back(peer: SyncManager.Peer) -> void:
 	print ("Peer %s: RTT %s ms | local lag %s | remote lag %s | advantage %s" % [peer.peer_id, peer.rtt, peer.local_lag, peer.remote_lag, peer.calculated_advantage])
 	if _debug_overlay:
 		_debug_overlay.update_peer(peer)
+
+func _on_SyncManager_state_loaded(rollback_ticks: int) -> void:
+	#print ("-----")
+	#print ("Rolled back %s ticks in order to re-run from tick %s" % [rollback_ticks, SyncManager.current_tick])
+	pass
+
+func _on_SyncManager_tick_finished(is_rollback: bool) -> void:
+	#if is_rollback:
+	#	print ("Finished replay of tick %s" % SyncManager.current_tick)
+	pass
 
 func _unhandled_input(event: InputEvent) -> void:
 	var action_pressed = event.is_action_pressed("sync_debug")
