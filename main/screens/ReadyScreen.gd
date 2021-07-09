@@ -83,6 +83,12 @@ func set_ready_button_enabled(enabled: bool = true) -> void:
 	if enabled:
 		ready_button.grab_focus()
 
+func show_ready_button() -> void:
+	ready_button.visible = true
+
+func hide_ready_button() -> void:
+	ready_button.visible = false
+
 func _on_ReadyButton_pressed() -> void:
 	emit_signal("ready_pressed")
 

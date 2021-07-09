@@ -21,14 +21,14 @@ signal game_over (player_id)
 func _ready() -> void:
 	SyncManager.connect("scene_spawned", self, "_on_SyncManager_scene_spawned")
 
-func game_start(players: Dictionary) -> void:
-	if GameState.online_play:
+func game_start(players: Dictionary, immediate: bool = false) -> void:
+	if GameState.online_play and not immediate:
 		rpc("_do_game_setup", players)
 	else:
 		_do_game_setup(players)
 
 # Initializes the game so that it is ready to really start.
-remotesync func _do_game_setup(players: Dictionary) -> void:
+remotesync func _do_game_setup(players: Dictionary, immediate: bool = false) -> void:
 	get_tree().set_pause(true)
 	
 	if game_started:
@@ -51,7 +51,7 @@ remotesync func _do_game_setup(players: Dictionary) -> void:
 		var other_player = SyncManager.spawn(str(peer_id), players_node, Player, spawn_data, false, "Player")
 		player_index += 1
 	
-	if GameState.online_play:
+	if GameState.online_play and not immediate:
 		# Tell the host that we've finished setup.
 		rpc_id(1, "_finished_game_setup", get_tree().get_network_unique_id())
 	else:
@@ -123,3 +123,13 @@ func _on_player_dead(player_id) -> void:
 		game_over = true
 		var player_keys = players_alive.keys()
 		emit_signal("game_over", player_keys[0])
+
+func _save_state() -> Dictionary:
+	return {
+		players_alive = players_alive,
+		game_over = game_over,
+	}
+
+func _load_state(state: Dictionary) -> void:
+	players_alive = state['players_alive']
+	game_over = state['game_over']

@@ -545,10 +545,10 @@ func _get_input_messages_for_peer(peer: Peer, disable_max_rpcs: bool = false) ->
 	if msg.size() > 0:
 		all_messages.push_front(msg)
 	
-	if all_messages.size() > 0:
-		var first_message_keys = all_messages[0].keys()
-		var last_message_keys = all_messages[-1].keys()
-		print ("Sending %s RPCs (%s messages: ticks %s - %s)" % [all_messages.size(), first_message_keys[-1] - last_message_keys[0], last_message_keys[0], first_message_keys[-1]])
+#	if all_messages.size() > 0:
+#		var first_message_keys = all_messages[0].keys()
+#		var last_message_keys = all_messages[-1].keys()
+#		print ("Sending %s RPCs (%s messages: ticks %s - %s)" % [all_messages.size(), first_message_keys[-1] - last_message_keys[0], last_message_keys[0], first_message_keys[-1]])
 	
 	return all_messages
 
@@ -703,7 +703,7 @@ remote func _rit(msg: Dictionary) -> void:
 		if not input_frame.is_player_input_predicted(peer_id):
 			continue
 		
-		print ("Received remote tick %s from %s" % [remote_tick, peer_id])
+		#print ("Received remote tick %s from %s" % [remote_tick, peer_id])
 		
 		# If we received a tick in the past and we aren't already setup to
 		# rollback earlier than that...
