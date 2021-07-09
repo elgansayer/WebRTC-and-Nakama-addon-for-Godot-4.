@@ -166,8 +166,6 @@ func _on_Game_player_dead(player_id: int) -> void:
 			ui_layer.show_message("You lose!")
 
 func _on_Game_game_over(player_id: int) -> void:
-	
-	
 	if not GameState.online_play:
 		show_winner(players[player_id])
 	else:
