@@ -1,6 +1,8 @@
 extends Node
 
 const SpawnManager = preload("res://addons/network-sync-rollback/SpawnManager.gd")
+const NetworkAdaptor = preload("res://addons/network-sync-rollback/NetworkAdaptor.gd")
+const RPCNetworkAdaptor = preload("res://addons/network-sync-rollback/RPCNetworkAdaptor.gd")
 
 class Peer extends Reference:
 	var peer_id: int
@@ -9,8 +11,8 @@ class Peer extends Reference:
 	var last_ping_received: int
 	var time_delta: float
 	
-	var last_remote_tick_received: int
-	var next_local_tick_requested: int
+	var last_remote_tick_received: int = 0
+	var next_local_tick_requested: int = 1
 	
 	var remote_lag: int
 	var local_lag: int
@@ -51,26 +53,6 @@ class InputForPlayer:
 	func _init(_input: Dictionary, _predicted: bool) -> void:
 		input = _input
 		predicted = _predicted
-		if not input.has('$'):
-			input['$'] = _calculate_cleaned_hash()
-	
-	# Calculates the input hash without any keys that start with '_' (if string)
-	# or less than 0 (if integer) to allow some properties to not count when
-	# comparing predicted input with real input.
-	func _calculate_cleaned_hash() -> int:
-		var cleaned_input := input.duplicate(true)
-		for path in cleaned_input:
-			if path == '$':
-				continue
-			for key in cleaned_input[path].keys():
-				var value = cleaned_input[path]
-				if key is String:
-					if key.begins_with('_'):
-						value.erase(key)
-				elif key is int:
-					if key < 0:
-						value.erase(key)
-		return cleaned_input.hash()
 
 class InputBufferFrame:
 	var tick: int
@@ -105,29 +87,78 @@ class InputBufferFrame:
 class StateBufferFrame:
 	var tick: int
 	var data: Dictionary
-	
+
 	func _init(_tick, _data) -> void:
 		tick = _tick
 		data = _data
 
 enum InputMessageKey {
-	TICK,
 	NEXT_TICK_REQUESTED,
 	INPUT,
 }
+
+const DEFAULT_MESSAGE_BUFFER_SIZE = 1280
+
+class MessageSerializer:
+	func serialize_input(input: Dictionary) -> PoolByteArray:
+		return var2bytes(input)
+
+	func unserialize_input(serialized: PoolByteArray) -> Dictionary:
+		return bytes2var(serialized)
+
+	func serialize_message(msg: Dictionary) -> PoolByteArray:
+		var buffer := StreamPeerBuffer.new()
+		buffer.resize(DEFAULT_MESSAGE_BUFFER_SIZE)
+	
+		buffer.put_u32(msg[InputMessageKey.NEXT_TICK_REQUESTED])
+		
+		var input_ticks = msg[InputMessageKey.INPUT]
+		buffer.put_u8(input_ticks.size())
+		for tick in input_ticks:
+			buffer.put_u32(tick)
+			
+			var input = input_ticks[tick]
+			buffer.put_u16(input.size())
+			buffer.put_data(input)
+		
+		buffer.resize(buffer.get_position())
+		return buffer.data_array
+
+	func unserialize_message(serialized) -> Dictionary:
+		var buffer := StreamPeerBuffer.new()
+		buffer.put_data(serialized)
+		buffer.seek(0)
+		
+		var msg := {
+			InputMessageKey.NEXT_TICK_REQUESTED: buffer.get_u32(),
+			InputMessageKey.INPUT: {}
+		}
+		
+		var tick_count = buffer.get_u8()
+		for tick_index in range(tick_count):
+			var tick = buffer.get_u32()
+			
+			var input_size = buffer.get_u16()
+			msg[InputMessageKey.INPUT][tick] = buffer.get_data(input_size)[1]
+		
+		return msg
+
+var network_adaptor: NetworkAdaptor setget set_network_adaptor
+var message_serializer: MessageSerializer setget set_message_serializer
 
 var peers := {}
 var input_buffer := []
 var state_buffer := []
 
-var max_buffer_size := 60
+var max_buffer_size := 20
 var ticks_to_calculate_advantage := 60
 var input_delay := 2 setget set_input_delay
-var max_messages_per_rpc := 3
-var max_rpcs_per_tick := 5
-var max_input_buffer_underruns := 10
-var rollback_debug_ticks := 2
-var debug_message_bytes := 500
+var max_input_frames_per_message := 5
+var max_messages_per_tick := 2
+var max_input_buffer_underruns := 300
+var skip_ticks_after_sync_regained := 10
+var rollback_debug_ticks := 0
+var debug_message_bytes := 700
 var log_state := false
 
 # In seconds, because we don't want it to be dependent on the network tick.
@@ -140,30 +171,35 @@ var rollback_ticks: int = 0 setget _set_readonly_variable
 var input_buffer_underruns := 0 setget _set_readonly_variable
 var started := false setget _set_readonly_variable
 
-var _input_path_map := {}
-var _input_path_map_reverse := {}
-
 var _ping_timer: Timer
 var _spawn_manager
 var _input_buffer_start_tick: int
 var _state_buffer_start_tick: int
+var _input_send_queue := []
+var _input_send_queue_start_tick: int
 var _logged_remote_state: Dictionary
 
 signal sync_started ()
 signal sync_stopped ()
+signal sync_lost ()
+signal sync_regained ()
 signal sync_error (msg)
+
 signal skip_ticks_flagged (count)
 signal rollback_flagged (tick, peer_id, local_input, remote_input)
 signal remote_state_mismatch (tick, peer_id, local_state, remote_state)
+
 signal peer_added (peer_id)
 signal peer_removed (peer_id)
 signal peer_pinged_back (peer)
+
 signal state_loaded (rollback_ticks)
 signal tick_finished (is_rollback)
 signal scene_spawned (name, spawned_node, scene, data)
 
 func _ready() -> void:
 	get_tree().connect("network_peer_disconnected", self, "remove_peer")
+	get_tree().connect("server_disconnected", self, "stop")
 	
 	_ping_timer = Timer.new()
 	_ping_timer.name = "PingTimer"
@@ -178,9 +214,33 @@ func _ready() -> void:
 	_spawn_manager.name = "SpawnManager"
 	add_child(_spawn_manager)
 	_spawn_manager.connect("scene_spawned", self, "_on_SpawnManager_scene_spawned")
+	
+	if network_adaptor == null:
+		set_network_adaptor(RPCNetworkAdaptor.new())
+	if message_serializer == null:
+		set_message_serializer(MessageSerializer.new())
 
 func _set_readonly_variable(_value) -> void:
 	pass
+
+func set_network_adaptor(_network_adaptor: NetworkAdaptor) -> void:
+	assert(not started, "Changing the network adaptor after SyncManager has started will probably break everything")
+	
+	if network_adaptor != null:
+		network_adaptor.detach_network_adaptor(self)
+		network_adaptor.disconnect("received_input_tick", self, "_receive_input_tick")
+		remove_child(network_adaptor)
+		network_adaptor.queue_free()
+	
+	network_adaptor = _network_adaptor
+	network_adaptor.name = 'NetworkAdaptor'
+	add_child(network_adaptor)
+	network_adaptor.connect("received_input_tick", self, "_receive_input_tick")
+	network_adaptor.attach_network_adaptor(self)
+
+func set_message_serializer(_message_serializer: MessageSerializer) -> void:
+	assert(not started, "Changing the message serializer after SyncManager has started will probably break everything")
+	message_serializer = _message_serializer
 
 func set_ping_frequency(_ping_frequency) -> void:
 	ping_frequency = _ping_frequency
@@ -214,40 +274,12 @@ func remove_peer(peer_id: int) -> void:
 	if peers.has(peer_id):
 		peers.erase(peer_id)
 		emit_signal("peer_removed", peer_id)
+	if peers.size() == 0:
+		stop()
 
 func clear_peers() -> void:
 	for peer_id in peers.keys().duplicate():
 		remove_peer(peer_id)
-
-func add_input_path_mapping(path: String, alias) -> void:
-	_input_path_map[path] = alias
-	_input_path_map_reverse[alias] = path
-
-func update_input_path_mapping(mapping: Dictionary) -> void:
-	for path in mapping:
-		add_input_path_mapping(path, mapping[path])
-
-func clear_input_path_mapping() -> void:
-	_input_path_map.clear()
-	_input_path_map_reverse.clear()
-
-func _map_input_paths(input: Dictionary) -> Dictionary:
-	if _input_path_map.size() == 0:
-		return input
-	var mapped_input := {}
-	for path in input:
-		var mapped_path = _input_path_map.get(path, path)
-		mapped_input[mapped_path] = input[path]
-	return mapped_input
-
-func _unmap_input_paths(mapped_input: Dictionary) -> Dictionary:
-	if _input_path_map_reverse.size() == 0:
-		return mapped_input
-	var input := {}
-	for mapped_path in mapped_input:
-		var path = _input_path_map_reverse.get(mapped_path, mapped_path)
-		input[path] = mapped_input[mapped_path]
-	return input
 
 func _on_ping_timer_timeout() -> void:
 	var system_time = OS.get_system_time_msecs()
@@ -300,8 +332,11 @@ remote func _remote_start() -> void:
 	state_buffer.clear()
 	_input_buffer_start_tick = 1
 	_state_buffer_start_tick = 0
+	_input_send_queue.clear()
+	_input_send_queue_start_tick = 1
 	_logged_remote_state.clear()
 	started = true
+	network_adaptor.start_network_adaptor(self)
 	emit_signal("sync_started")
 
 func stop() -> void:
@@ -311,6 +346,7 @@ func stop() -> void:
 		_remote_stop()
 
 remotesync func _remote_stop() -> void:
+	network_adaptor.stop_network_adaptor(self)
 	started = false
 	input_tick = 0
 	current_tick = 0
@@ -321,6 +357,8 @@ remotesync func _remote_stop() -> void:
 	state_buffer.clear()
 	_input_buffer_start_tick = 0
 	_state_buffer_start_tick = 0
+	_input_send_queue.clear()
+	_input_send_queue_start_tick = 0
 	_logged_remote_state.clear()
 	
 	for peer in peers.values():
@@ -397,10 +435,6 @@ func _save_current_state() -> void:
 	var state_data = _call_save_state()
 	state_buffer.append(StateBufferFrame.new(current_tick, state_data))
 	
-	while state_buffer.size() > max_buffer_size:
-		state_buffer.pop_front()
-		_state_buffer_start_tick += 1
-	
 	if log_state and not get_tree().is_network_server() and is_player_input_complete(current_tick):
 		rpc_id(1, "_log_saved_state", current_tick, state_data)
 
@@ -416,6 +450,7 @@ func _do_tick(delta: float, is_rollback: bool = false) -> void:
 			var predicted_input := {}
 			if previous_frame:
 				predicted_input = _call_predict_remote_input(previous_frame.get_player_input(peer_id))
+			_calculate_input_hash(predicted_input)
 			input_frame.players[peer_id] = InputForPlayer.new(predicted_input, true)
 	
 	_call_network_process(delta, input_frame)
@@ -439,31 +474,36 @@ func _get_or_create_input_frame(tick: int) -> InputBufferFrame:
 		if input_frame == null:
 			return _handle_fatal_error("Requested input frame (%s) not found in buffer" % tick)
 	
+	return input_frame
+
+func _cleanup_buffers() -> bool:
+	# Clean-up the input send queue.
+	var min_next_tick_requested = _calculate_minimum_next_tick_requested()
+	while _input_send_queue_start_tick < min_next_tick_requested:
+		_input_send_queue.pop_front()
+		_input_send_queue_start_tick += 1
+	
+	# Clean-up old state buffer frames.
+	while state_buffer.size() > max_buffer_size:
+		var state_frame_to_retire: StateBufferFrame = state_buffer[0]
+		var input_frame = get_input_frame(state_frame_to_retire.tick + 1)
+		if input_frame == null or not input_frame.is_complete(peers):
+			var missing: Array = input_frame.get_missing_peers(peers)
+			push_warning("Attempting to retire state frame %s, but input frame %s is still missing input (missing peer(s): %s)" % [state_frame_to_retire.tick, input_frame.tick, missing])
+			return false
+		
+		state_buffer.pop_front()
+		_state_buffer_start_tick += 1
+	
 	# Clean-up old input buffer frames. Unlike state frames, we can have many
 	# frames from the future if we are running behind. We don't want having too
 	# many future frames to end up discarding input for the current frame, so we
 	# only count input frames before the current frame towards the buffer size.
 	while (current_tick - _input_buffer_start_tick) > max_buffer_size:
-		var input_frame_to_retire = input_buffer[0]
-		if not input_frame_to_retire.is_complete(peers):
-			input_buffer_underruns += 1
-			var missing: Array = input_frame_to_retire.get_missing_peers(peers)
-			if input_buffer_underruns > max_input_buffer_underruns:
-				return _handle_fatal_error("Retired an incomplete input frame %s (missing peer(s): %s)" % [input_frame_to_retire.tick, missing])
-			print ("Input buffer underrun")
-			# Resend input to this peer - if we're missing their input, they're
-			# probably missing ours too.
-			for peer_id in missing:
-				_send_input_to_peer(peer_id, true)
-			if not _calculate_skip_ticks(true):
-				skip_ticks = 10
-				emit_signal("skip_ticks_flagged", skip_ticks)
-		else:
-			_input_buffer_start_tick += 1
-			input_buffer.pop_front()
-			input_buffer_underruns = 0
+		_input_buffer_start_tick += 1
+		input_buffer.pop_front()
 	
-	return input_frame
+	return true
 
 func get_input_frame(tick: int) -> InputBufferFrame:
 	if tick < _input_buffer_start_tick:
@@ -514,54 +554,53 @@ func is_player_input_complete(tick: int) -> bool:
 func is_current_player_input_complete() -> bool:
 	return is_player_input_complete(current_tick)
 
-func _get_input_messages_for_peer(peer: Peer, disable_max_rpcs: bool = false) -> Array:
-	var index := 0
-	# If we no longer have the next tick they requested, we just start at 0 in
-	# the buffer and hope they got that input frame from a previous message.
-	if peer.next_local_tick_requested > _input_buffer_start_tick:
-		index = peer.next_local_tick_requested - _input_buffer_start_tick
-	
-	# Only send a certain amount of RPCs and messages per tick.
-	var max_messages = (max_messages_per_rpc * max_rpcs_per_tick)
-	if not disable_max_rpcs and input_tick - (_input_buffer_start_tick + index) > max_messages:
-		index = input_tick - _input_buffer_start_tick - max_messages
-	
-	var local_peer_id = get_tree().get_network_unique_id()
+func _get_input_messages_from_send_queue_in_range(first_index: int, last_index: int, reverse: bool = false) -> Array:
+	var indexes = range(first_index, last_index + 1) if not reverse else range(last_index, first_index - 1, -1)
 	
 	var all_messages := []
 	var msg := {}
-	while index < input_buffer.size():
-		var input_frame: InputBufferFrame = input_buffer[index]
-		if not input_frame.players.has(local_peer_id):
-			break
-		msg[input_frame.tick] = _map_input_paths(input_frame.players[local_peer_id].input)
+	for index in indexes:
+		msg[_input_send_queue_start_tick + index] = _input_send_queue[index]
 		
-		if max_messages_per_rpc > 0 and msg.size() >= max_messages_per_rpc:
-			all_messages.push_front(msg)
+		if max_input_frames_per_message > 0 and msg.size() == max_input_frames_per_message:
+			all_messages.append(msg)
 			msg = {}
-		
-		index += 1
 	
 	if msg.size() > 0:
-		all_messages.push_front(msg)
-	
-#	if all_messages.size() > 0:
-#		var first_message_keys = all_messages[0].keys()
-#		var last_message_keys = all_messages[-1].keys()
-#		print ("Sending %s RPCs (%s messages: ticks %s - %s)" % [all_messages.size(), first_message_keys[-1] - last_message_keys[0], last_message_keys[0], first_message_keys[-1]])
+		all_messages.append(msg)
 	
 	return all_messages
 
-func _calculate_skip_ticks(force_calculate_advantage: bool = false) -> bool:
+func _get_input_messages_from_send_queue_for_peer(peer: Peer) -> Array:
+	var first_index := peer.next_local_tick_requested - _input_send_queue_start_tick
+	var last_index := _input_send_queue.size() - 1
+	var max_messages := (max_input_frames_per_message * max_messages_per_tick)
+	
+	if (last_index + 1) - first_index <= max_messages:
+		return _get_input_messages_from_send_queue_in_range(first_index, last_index, true)
+	
+	var new_messages = int(ceil(max_messages_per_tick / 2.0))
+	var old_messages = int(floor(max_messages_per_tick / 2.0))
+	
+	return _get_input_messages_from_send_queue_in_range(last_index - (new_messages * max_input_frames_per_message) + 1, last_index, true) + \
+		   _get_input_messages_from_send_queue_in_range(first_index, first_index + (old_messages * max_input_frames_per_message) - 1)
+
+func _record_advantage(force_calculate_advantage: bool = false) -> void:
 	var max_advantage: float
 	for peer in peers.values():
 		# Number of frames we are predicting for this peer.
-		peer.local_lag = (input_tick + 1) - peer.last_remote_tick_received
+		peer.local_lag = (current_tick + 1) - peer.last_remote_tick_received
 		# Calculate the advantage the peer has over us.
 		peer.record_advantage(ticks_to_calculate_advantage if not force_calculate_advantage else 0)
 		# Attempt to find the greatest advantage.
 		max_advantage = max(max_advantage, peer.calculated_advantage)
-		
+
+func _calculate_skip_ticks() -> bool:
+	# Attempt to find the greatest advantage.
+	var max_advantage: float
+	for peer in peers.values():
+		max_advantage = max(max_advantage, peer.calculated_advantage)
+	
 	if max_advantage >= 2.0 and skip_ticks == 0:
 		skip_ticks = int(max_advantage / 2)
 		emit_signal("skip_ticks_flagged", skip_ticks)
@@ -572,27 +611,40 @@ func _calculate_skip_ticks(force_calculate_advantage: bool = false) -> bool:
 func _calculate_message_bytes(msg) -> int:
 	return var2bytes(msg).size()
 
-func _send_input_to_peer(peer_id: int, disable_max_rpcs: bool = false) -> void:
+func _calculate_minimum_next_tick_requested() -> int:
+	if peers.size() == 0:
+		return 1
+	var peer_list := peers.values().duplicate()
+	var result: int = peer_list.pop_front().next_local_tick_requested
+	for peer in peer_list:
+		result = min(result, peer.next_local_tick_requested)
+	return result
+
+func _send_input_messages_to_peer(peer_id: int) -> void:
 	assert(peer_id != get_tree().get_network_unique_id(), "Cannot send input to ourselves")
 	var peer = peers[peer_id]
 	
-	for input in _get_input_messages_for_peer(peer, disable_max_rpcs):
+	for input in _get_input_messages_from_send_queue_for_peer(peer):
 		var msg = {
 			InputMessageKey.NEXT_TICK_REQUESTED: peer.last_remote_tick_received + 1,
 			InputMessageKey.INPUT: input,
 		}
 		
+		var bytes = message_serializer.serialize_message(msg)
+		
 		# See https://gafferongames.com/post/packet_fragmentation_and_reassembly/
 		if debug_message_bytes:
-			var bytes = _calculate_message_bytes(msg)
-			if bytes > debug_message_bytes:
-				push_error("Sending message w/ size %s bytes" % bytes)
+			if bytes.size() > debug_message_bytes:
+				push_error("Sending message w/ size %s bytes" % bytes.size())
 		
-		rpc_unreliable_id(peer_id, "_rit", msg)
+		#var ticks = msg[InputMessageKey.INPUT].keys()
+		#print ("Sending ticks %s - %s" % [min(ticks[0], ticks[-1]), max(ticks[0], ticks[-1])])
+		
+		network_adaptor.send_input_tick(peer_id, bytes)
 
-func _send_input_to_all_peers() -> void:
+func _send_input_messages_to_all_peers() -> void:
 	for peer_id in peers:
-		_send_input_to_peer(peer_id)
+		_send_input_messages_to_peer(peer_id)
 
 func _physics_process(delta: float) -> void:
 	if not started:
@@ -601,6 +653,10 @@ func _physics_process(delta: float) -> void:
 	if current_tick == 0:
 		# Store an initial state before any ticks.
 		_save_current_state()
+	
+	# We do this in _process() too, so hopefully all is good by now, but just in
+	# case, we don't want to miss out on any data.
+	network_adaptor.poll()
 	
 	if rollback_debug_ticks > 0 and current_tick >= rollback_debug_ticks:
 		rollback_ticks = max(rollback_ticks, rollback_debug_ticks)
@@ -630,6 +686,41 @@ func _physics_process(delta: float) -> void:
 	if get_tree().is_network_server() and _logged_remote_state.size() > 0:
 		_process_logged_remote_state()
 	
+	_record_advantage()
+	
+	# Negative numbers are used to skip some additional ticks after we've
+	# technically regained sync, but we don't want to start back up again right
+	# away.
+	if input_buffer_underruns < 0:
+		input_buffer_underruns += 1
+		if input_buffer_underruns == 0:
+			# Let the world know we've regained sync, and fall back to normal
+			# operation. (This is the only branch that shouldn't 'return').
+			emit_signal("sync_regained")
+			# We don't want to skip ticks through the normal mechanism, because
+			# any skips that were previously calculated don't apply anymore.
+			skip_ticks = 0
+		else:
+			# Even when we're skipping ticks, still send input.
+			_send_input_messages_to_all_peers()
+			return
+	# Attempt to clean up buffers, but if we can't, that means we've lost sync.
+	elif not _cleanup_buffers():
+		if input_buffer_underruns == 0:
+			emit_signal("sync_lost")
+		input_buffer_underruns += 1
+		if input_buffer_underruns >= max_input_buffer_underruns:
+			_handle_fatal_error("Unable to regain synchronization")
+			return
+		# Even when we're skipping ticks, still send input.
+		_send_input_messages_to_all_peers()
+		return
+	elif input_buffer_underruns > 0:
+		# We've technically regained sync, but we don't want to just fall out of
+		# sync again next frame, so skip a few more frames for good luck.
+		input_buffer_underruns = -skip_ticks_after_sync_regained
+		return
+	
 	if skip_ticks > 0:
 		skip_ticks -= 1
 		if skip_ticks == 0:
@@ -637,10 +728,11 @@ func _physics_process(delta: float) -> void:
 				peer.clear_advantage()
 		else:
 			# Even when we're skipping ticks, still send input.
-			_send_input_to_all_peers()
+			_send_input_messages_to_all_peers()
 			return
 	
 	if _calculate_skip_ticks():
+		# This means we need to skip some ticks, so may as well start now!
 		return
 	
 	input_tick += 1
@@ -653,20 +745,47 @@ func _physics_process(delta: float) -> void:
 		return
 		
 	var local_input = _call_get_local_input()
+	_calculate_input_hash(local_input)
 	input_frame.players[get_tree().get_network_unique_id()] = InputForPlayer.new(local_input, false)
-	_send_input_to_all_peers()
+	_input_send_queue.append(message_serializer.serialize_input(local_input))
+	assert(input_tick == _input_send_queue_start_tick + _input_send_queue.size() - 1, "Input send queue ticks numbers are misaligned")
+	_send_input_messages_to_all_peers()
 	
 	if current_tick > 0:
 		_do_tick(delta)
 
-# _rit is short for _receive_input_tick. The method name ends up in each message
-# so, we're trying to keep it short.
-remote func _rit(msg: Dictionary) -> void:
+func _process(delta: float) -> void:
+	if started:
+		network_adaptor.poll()
+
+# Calculates the input hash without any keys that start with '_' (if string)
+# or less than 0 (if integer) to allow some properties to not count when
+# comparing predicted input with real input.
+func _calculate_input_hash(input: Dictionary) -> void:
+	var cleaned_input := input.duplicate(true)
+	if cleaned_input.has('$'):
+		cleaned_input.erase('$')
+	for path in cleaned_input:
+		for key in cleaned_input[path].keys():
+			var value = cleaned_input[path]
+			if key is String:
+				if key.begins_with('_'):
+					value.erase(key)
+			elif key is int:
+				if key < 0:
+					value.erase(key)
+	input['$'] = cleaned_input.hash()
+
+func _receive_input_tick(peer_id: int, serialized_msg: PoolByteArray) -> void:
 	if not started:
 		return
 	
+	var msg = message_serializer.unserialize_message(serialized_msg)
+	
 	var all_remote_input: Dictionary = msg[InputMessageKey.INPUT]
 	var all_remote_ticks = all_remote_input.keys()
+	all_remote_ticks.sort()
+	
 	var first_remote_tick = all_remote_ticks[0]
 	var last_remote_tick = all_remote_ticks[-1]
 
@@ -679,7 +798,6 @@ remote func _rit(msg: Dictionary) -> void:
 		print ("Discarding message from the future")
 		return
 	
-	var peer_id = get_tree().get_rpc_sender_id()
 	var peer: Peer = peers[peer_id]
 	
 	# Integrate the input we received into the input buffer.
@@ -692,7 +810,7 @@ remote func _rit(msg: Dictionary) -> void:
 		if remote_tick < _input_buffer_start_tick:
 			continue
 		
-		var remote_input = _unmap_input_paths(all_remote_input[remote_tick])
+		var remote_input = message_serializer.unserialize_input(all_remote_input[remote_tick])
 		var input_frame := _get_or_create_input_frame(remote_tick)
 		if input_frame == null:
 			# _get_or_create_input_frame() will have already flagged the error,
@@ -722,10 +840,15 @@ remote func _rit(msg: Dictionary) -> void:
 			# Otherwise, just store it.
 			input_frame.players[peer_id] = InputForPlayer.new(remote_input, false)
 	
-	# Record stats about the integrated input.
-	if first_remote_tick == peer.last_remote_tick_received + 1:
-		peer.last_remote_tick_received = max(last_remote_tick, peer.last_remote_tick_received)
+	# Find what the last remote tick we received was after filling these in.
+	var index = (peer.last_remote_tick_received - _input_buffer_start_tick) + 1
+	while index < input_buffer.size() and not input_buffer[index].is_player_input_predicted(peer.peer_id):
+		peer.last_remote_tick_received += 1
+		index += 1
+	
+	# Record the next frame the other peer needs.
 	peer.next_local_tick_requested = max(msg[InputMessageKey.NEXT_TICK_REQUESTED], peer.next_local_tick_requested)
+	
 	# Number of frames the remote is predicting for us.
 	peer.remote_lag = (peer.last_remote_tick_received + 1) - peer.next_local_tick_requested
 
