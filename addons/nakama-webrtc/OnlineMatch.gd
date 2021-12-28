@@ -74,6 +74,9 @@ signal player_status_changed (player, status)
 signal match_ready (players)
 signal match_not_ready ()
 
+signal webrtc_peer_added (webrtc_peer, player)
+signal webrtc_peer_removed (webrtc_peer, player)
+
 class Player:
 	var session_id: String
 	var peer_id: int
@@ -251,7 +254,7 @@ func get_session_id(peer_id: int):
 			return session_id
 	return null
 
-func get_player_by_peer_id(peer_id: int):
+func get_player_by_peer_id(peer_id: int) -> Player:
 	var session_id = get_session_id(peer_id)
 	if session_id:
 		return players[session_id]
@@ -268,6 +271,15 @@ func get_player_names_by_peer_id() -> Dictionary:
 	for session_id in players:
 		result[players[session_id]['peer_id']] = players[session_id]['username']
 	return result
+
+func get_webrtc_peer(session_id: String) -> WebRTCPeerConnection:
+	return _webrtc_peers.get(session_id, null)
+
+func get_webrtc_peer_by_peer_id(peer_id: int) -> WebRTCPeerConnection:
+	var player = get_player_by_peer_id(peer_id)
+	if player:
+		return _webrtc_peers.get(player.session_id, null)
+	return null
 
 func _on_nakama_error(data) -> void:
 	print ("ERROR:")
@@ -475,7 +487,9 @@ func _webrtc_connect_peer(player: Player) -> void:
 	_webrtc_peers[player.session_id] = webrtc_peer
 	
 	#get_tree().multiplayer._del_peer(u['peer_id'])
-	_webrtc_multiplayer.add_peer(webrtc_peer, player.peer_id)
+	_webrtc_multiplayer.add_peer(webrtc_peer, player.peer_id, 0)
+	
+	emit_signal("webrtc_peer_added", webrtc_peer, player)
 	
 	if my_session_id.casecmp_to(player.session_id) < 0:
 		var result = webrtc_peer.create_offer()
@@ -484,6 +498,7 @@ func _webrtc_connect_peer(player: Player) -> void:
 
 func _webrtc_disconnect_peer(player: Player) -> void:
 	var webrtc_peer = _webrtc_peers[player.session_id]
+	emit_signal("webrtc_peer_removed", webrtc_peer, player)
 	webrtc_peer.close()
 	_webrtc_peers.erase(player.session_id)
 	_webrtc_peers_connected.erase(player.session_id)
@@ -491,6 +506,7 @@ func _webrtc_disconnect_peer(player: Player) -> void:
 func _webrtc_reconnect_peer(player: Player) -> void:
 	var old_webrtc_peer = _webrtc_peers[player.session_id]
 	if old_webrtc_peer:
+		emit_signal("webrtc_peer_removed", old_webrtc_peer, player)
 		old_webrtc_peer.close()
 	
 	_webrtc_peers_connected.erase(player.session_id)
@@ -547,7 +563,7 @@ func _on_webrtc_peer_connected(peer_id: int) -> void:
 	for session_id in players:
 		if players[session_id]['peer_id'] == peer_id:
 			_webrtc_peers_connected[session_id] = true
-			#print ("WebRTC peer connected: " + str(peer_id))
+			print ("WebRTC peer connected: " + str(peer_id))
 			emit_signal("player_status_changed", players[session_id], PlayerStatus.CONNECTED)
 
 	# We have a WebRTC peer for each connection to another player, so we'll have one less than
